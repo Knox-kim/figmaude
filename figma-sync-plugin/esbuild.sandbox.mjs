@@ -8,7 +8,7 @@ const ctx = await esbuild.context({
   bundle: true,
   outfile: "dist/code.js",
   format: "iife",
-  target: "es2022",
+  target: "es2017",
   minify,
   sourcemap: false,
   platform: "neutral",
