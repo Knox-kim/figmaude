@@ -1,0 +1,33 @@
+{
+  "name": "figma-sync-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n sandbox,ui \"npm:dev:sandbox\" \"npm:dev:ui\"",
+    "dev:sandbox": "node esbuild.sandbox.mjs --watch",
+    "dev:ui": "vite build --watch",
+    "build": "npm run build:sandbox && npm run build:ui",
+    "build:sandbox": "node esbuild.sandbox.mjs --minify",
+    "build:ui": "vite build",
+    "typecheck": "npm run typecheck:sandbox && npm run typecheck:ui",
+    "typecheck:sandbox": "tsc --noEmit -p tsconfig.sandbox.json",
+    "typecheck:ui": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.121.0",
+    "@tailwindcss/vite": "^4.1.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "concurrently": "^9.1.0",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.2.0",
+    "vite-plugin-singlefile": "^2.3.0"
+  }
+}
