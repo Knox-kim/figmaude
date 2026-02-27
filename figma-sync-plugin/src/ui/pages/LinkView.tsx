@@ -4,7 +4,7 @@ interface LinkViewProps {
   selectedNodeId: string | null;
   selectedNodeName: string | null;
   basePath: string;
-  onLink: (nodeId: string, codePath: string, componentName: string) => void;
+  onLink: (nodeId: string, codePath: string, componentName: string) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -21,8 +21,9 @@ export default function LinkView({
     suggestedName ? `${basePath}/${suggestedName}.tsx` : ""
   );
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  function handleLink() {
+  async function handleLink() {
     if (!selectedNodeId) {
       setError("Select a component in Figma first");
       return;
@@ -36,7 +37,13 @@ export default function LinkView({
       return;
     }
     setError(null);
-    onLink(selectedNodeId, filePath.trim(), componentName.trim());
+    setLoading(true);
+    try {
+      await onLink(selectedNodeId, filePath.trim(), componentName.trim());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to link component");
+      setLoading(false);
+    }
   }
 
   return (
@@ -88,10 +95,10 @@ export default function LinkView({
         </button>
         <button
           onClick={handleLink}
-          disabled={!selectedNodeId}
+          disabled={!selectedNodeId || loading}
           className="flex-1 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          Link
+          {loading ? "Linking..." : "Link"}
         </button>
       </div>
     </div>

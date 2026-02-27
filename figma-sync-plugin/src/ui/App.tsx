@@ -52,7 +52,10 @@ export default function App() {
   }
 
   async function handleLink(nodeId: string, codePath: string, componentName: string) {
-    await requestToPlugin("LINK_COMPONENT", { nodeId, codePath, componentName });
+    const { success } = await requestToPlugin("LINK_COMPONENT", { nodeId, codePath, componentName });
+    if (!success) {
+      throw new Error("Failed to link: node may not be accessible on this page");
+    }
     setPage("main");
   }
 
