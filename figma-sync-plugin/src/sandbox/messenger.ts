@@ -28,6 +28,24 @@ export function emitToUI(event: PluginEvent): void {
 
 export function initMessenger(): void {
   figma.ui.onmessage = async (msg: any) => {
+    // Handle storage messages
+    if (msg.kind === "storage") {
+      if (msg.action === "get") {
+        const value = await figma.clientStorage.getAsync(msg.key);
+        figma.ui.postMessage({
+          kind: "storage-response",
+          key: msg.key,
+          value,
+        });
+        return;
+      }
+      if (msg.action === "set") {
+        await figma.clientStorage.setAsync(msg.key, msg.value);
+        return;
+      }
+    }
+
+    // Handle request messages
     if (msg.kind !== "request") return;
 
     const envelope = msg as RequestEnvelope;
