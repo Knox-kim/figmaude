@@ -24,19 +24,19 @@ figma.on("selectionchange", () => {
 
 // Request handlers
 onRequestFromUI("GET_MAPPINGS", async () => {
-  return { mappings: getAllMappings() };
+  return { mappings: await getAllMappings() };
 });
 
 onRequestFromUI("LINK_COMPONENT", async ({ nodeId, codePath, componentName }) => {
-  return { success: linkComponent(nodeId, codePath, componentName) };
+  return { success: await linkComponent(nodeId, codePath, componentName) };
 });
 
 onRequestFromUI("UNLINK_COMPONENT", async ({ nodeId }) => {
-  return { success: unlinkComponent(nodeId) };
+  return { success: await unlinkComponent(nodeId) };
 });
 
 onRequestFromUI("UPDATE_FIGMA_HASH", async ({ nodeId }) => {
-  const hash = updateFigmaHash(nodeId);
+  const hash = await updateFigmaHash(nodeId);
   return { hash: hash ?? "" };
 });
 
@@ -58,5 +58,5 @@ onRequestFromUI("SET_CONFIG", async ({ config }) => {
 });
 
 onRequestFromUI("UPDATE_CODE_HASH", async ({ nodeId, codeHash }) => {
-  return { success: updateCodeHash(nodeId, codeHash) };
+  return { success: await updateCodeHash(nodeId, codeHash) };
 });

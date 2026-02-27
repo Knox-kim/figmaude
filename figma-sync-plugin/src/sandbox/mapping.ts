@@ -55,12 +55,12 @@ function setNodeMapping(node: BaseNode, entry: MappingEntry): void {
 
 // --- CRUD ---
 
-export function linkComponent(
+export async function linkComponent(
   nodeId: string,
   codePath: string,
   componentName: string
-): boolean {
-  const node = figma.getNodeById(nodeId);
+): Promise<boolean> {
+  const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) return false;
 
   const figmaHash = computeFigmaHash(node as SceneNode);
@@ -87,8 +87,8 @@ export function linkComponent(
   return true;
 }
 
-export function unlinkComponent(nodeId: string): boolean {
-  const node = figma.getNodeById(nodeId);
+export async function unlinkComponent(nodeId: string): Promise<boolean> {
+  const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) return false;
 
   node.setPluginData(MAPPING_KEY, "");
@@ -99,13 +99,13 @@ export function unlinkComponent(nodeId: string): boolean {
   return true;
 }
 
-export function getAllMappings(): MappingEntry[] {
+export async function getAllMappings(): Promise<MappingEntry[]> {
   const ids = getMappingNodeIds();
   const mappings: MappingEntry[] = [];
   const validIds: string[] = [];
 
   for (const id of ids) {
-    const node = figma.getNodeById(id);
+    const node = await figma.getNodeByIdAsync(id);
     if (!node) continue;
 
     const entry = getNodeMapping(node);
@@ -125,8 +125,8 @@ export function getAllMappings(): MappingEntry[] {
   return mappings;
 }
 
-export function updateCodeHash(nodeId: string, codeHash: string): boolean {
-  const node = figma.getNodeById(nodeId);
+export async function updateCodeHash(nodeId: string, codeHash: string): Promise<boolean> {
+  const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) return false;
 
   const entry = getNodeMapping(node);
@@ -137,8 +137,8 @@ export function updateCodeHash(nodeId: string, codeHash: string): boolean {
   return true;
 }
 
-export function updateFigmaHash(nodeId: string): string | null {
-  const node = figma.getNodeById(nodeId);
+export async function updateFigmaHash(nodeId: string): Promise<string | null> {
+  const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) return null;
 
   const entry = getNodeMapping(node);
