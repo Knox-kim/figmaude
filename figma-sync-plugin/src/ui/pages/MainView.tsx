@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import type { MappingEntry, SyncState, GlobalConfig } from "../../shared/types";
 import { requestToPlugin } from "../lib/messenger";
-import { getFileShas } from "../lib/github";
+import { getFileSha, getFileShas } from "../lib/github";
 import ComponentCard from "../components/ComponentCard";
 
 interface MappingWithState extends MappingEntry {
   state: SyncState;
+  currentCodeHash: string;
 }
 
 interface MainViewProps {
@@ -16,9 +17,6 @@ interface MainViewProps {
 
 function computeState(mapping: MappingEntry, currentCodeHash: string): SyncState {
   const figmaChanged = mapping.figmaHash !== mapping.lastSyncedHash;
-
-  // Code changed = current GitHub SHA differs from what was stored at last sync
-  // If codeHash was never set, current code is the baseline (not changed)
   const codeChanged =
     mapping.codeHash !== "" && currentCodeHash !== "" && currentCodeHash !== mapping.codeHash;
 
@@ -31,6 +29,7 @@ function computeState(mapping: MappingEntry, currentCodeHash: string): SyncState
 export default function MainView({ config, onLinkNew, onSettings }: MainViewProps) {
   const [mappings, setMappings] = useState<MappingWithState[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncingId, setSyncingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
@@ -47,7 +46,6 @@ export default function MainView({ config, onLinkNew, onSettings }: MainViewProp
         config.branch
       );
 
-      // Store initial codeHash for mappings that don't have one yet
       for (const m of rawMappings) {
         const sha = shas.get(m.linkedFile) ?? "";
         if (m.codeHash === "" && sha !== "") {
@@ -58,6 +56,7 @@ export default function MainView({ config, onLinkNew, onSettings }: MainViewProp
 
       const withState: MappingWithState[] = rawMappings.map((m) => ({
         ...m,
+        currentCodeHash: shas.get(m.linkedFile) ?? "",
         state: computeState(m, shas.get(m.linkedFile) ?? ""),
       }));
 
@@ -76,6 +75,65 @@ export default function MainView({ config, onLinkNew, onSettings }: MainViewProp
   async function handleUnlink(nodeId: string) {
     await requestToPlugin("UNLINK_COMPONENT", { nodeId });
     refresh();
+  }
+
+  async function handleMarkSynced(mapping: MappingWithState) {
+    setSyncingId(mapping.nodeId);
+    try {
+      // Update figma hash (marks current figma state as synced baseline)
+      await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: mapping.nodeId });
+      // Update code hash to current GitHub SHA
+      if (mapping.currentCodeHash) {
+        await requestToPlugin("UPDATE_CODE_HASH", {
+          nodeId: mapping.nodeId,
+          codeHash: mapping.currentCodeHash,
+        });
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to mark as synced");
+    } finally {
+      setSyncingId(null);
+    }
+  }
+
+  async function handleForceSyncFigma(mapping: MappingWithState) {
+    // Keep Figma as source of truth — reset baseline to current figma hash
+    setSyncingId(mapping.nodeId);
+    try {
+      await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: mapping.nodeId });
+      if (mapping.currentCodeHash) {
+        await requestToPlugin("UPDATE_CODE_HASH", {
+          nodeId: mapping.nodeId,
+          codeHash: mapping.currentCodeHash,
+        });
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to sync");
+    } finally {
+      setSyncingId(null);
+    }
+  }
+
+  async function handleForceSyncCode(mapping: MappingWithState) {
+    // Keep Code as source of truth — reset baseline to current code hash
+    setSyncingId(mapping.nodeId);
+    try {
+      // Update figma hash first (so figma side is marked as current)
+      await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: mapping.nodeId });
+      if (mapping.currentCodeHash) {
+        await requestToPlugin("UPDATE_CODE_HASH", {
+          nodeId: mapping.nodeId,
+          codeHash: mapping.currentCodeHash,
+        });
+      }
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to sync");
+    } finally {
+      setSyncingId(null);
+    }
   }
 
   return (
@@ -109,7 +167,11 @@ export default function MainView({ config, onLinkNew, onSettings }: MainViewProp
               componentName={m.componentName}
               codePath={m.linkedFile}
               state={m.state}
+              syncing={syncingId === m.nodeId}
               onUnlink={() => handleUnlink(m.nodeId)}
+              onMarkSynced={() => handleMarkSynced(m)}
+              onForceSyncFigma={() => handleForceSyncFigma(m)}
+              onForceSyncCode={() => handleForceSyncCode(m)}
             />
           ))}
         </div>
