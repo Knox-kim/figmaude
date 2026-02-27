@@ -18,7 +18,7 @@ const pendingRequests = new Map<
 const eventHandlers = new Set<EventHandler>();
 
 // Listen for messages from sandbox
-window.onmessage = (e: MessageEvent) => {
+window.addEventListener("message", (e: MessageEvent) => {
   const msg = e.data.pluginMessage;
   if (!msg) return;
 
@@ -37,7 +37,7 @@ window.onmessage = (e: MessageEvent) => {
     const envelope = msg as EventEnvelope;
     eventHandlers.forEach((handler) => handler(envelope.payload));
   }
-};
+});
 
 export function requestToPlugin<T extends PluginRequestType>(
   type: T,

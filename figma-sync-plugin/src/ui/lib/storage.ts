@@ -1,4 +1,5 @@
 let cachedToken: string | null = null;
+let tokenLoadedCallback: ((token: string | null) => void) | null = null;
 
 export function setToken(token: string): void {
   cachedToken = token;
@@ -19,6 +20,10 @@ export function getToken(): string | null {
   return cachedToken;
 }
 
+export function onTokenLoaded(callback: (token: string | null) => void): void {
+  tokenLoadedCallback = callback;
+}
+
 export function requestStoredToken(): void {
   parent.postMessage(
     {
@@ -32,12 +37,15 @@ export function requestStoredToken(): void {
   );
 }
 
-export function handleStorageMessage(msg: any): boolean {
-  if (msg.kind === "storage-response") {
-    if (msg.key === "github-token") {
-      cachedToken = msg.value ?? null;
+// Listen for storage responses independently
+window.addEventListener("message", (e: MessageEvent) => {
+  const msg = e.data.pluginMessage;
+  if (!msg || msg.kind !== "storage-response") return;
+
+  if (msg.key === "github-token") {
+    cachedToken = msg.value ?? null;
+    if (tokenLoadedCallback) {
+      tokenLoadedCallback(cachedToken);
     }
-    return true;
   }
-  return false;
-}
+});

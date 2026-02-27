@@ -53,7 +53,12 @@ function extractVisualProps(node: SceneNode): VisualProps {
   return props;
 }
 
+function replaceMixed(_key: string, value: unknown): unknown {
+  if (value === figma.mixed) return "MIXED";
+  return value;
+}
+
 export function computeFigmaHash(node: SceneNode): string {
   const props = extractVisualProps(node);
-  return djb2(JSON.stringify(props));
+  return djb2(JSON.stringify(props, replaceMixed));
 }

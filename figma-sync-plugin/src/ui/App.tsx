@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { GlobalConfig } from "../shared/types";
 import { onPluginEvent, requestToPlugin } from "./lib/messenger";
-import { setToken, getToken, requestStoredToken, handleStorageMessage } from "./lib/storage";
+import { setToken, getToken, requestStoredToken, onTokenLoaded } from "./lib/storage";
 import MainView from "./pages/MainView";
 import LinkView from "./pages/LinkView";
 import SettingsView from "./pages/SettingsView";
@@ -15,19 +15,21 @@ export default function App() {
   const [selectedNodeName, setSelectedNodeName] = useState<string | null>(null);
 
   useEffect(() => {
-    const originalOnMessage = window.onmessage;
-    window.onmessage = (e: MessageEvent) => {
-      const msg = e.data.pluginMessage;
-      if (msg && handleStorageMessage(msg)) {
-        if (getToken() && config) {
-          setPage("main");
-        }
-        return;
+    // Restore persisted config from plugin data
+    requestToPlugin("GET_CONFIG").then(({ config: savedConfig }) => {
+      if (savedConfig) {
+        setConfig(savedConfig);
       }
-      if (originalOnMessage) {
-        originalOnMessage.call(window, e);
+    });
+
+    // Listen for token loaded from clientStorage
+    onTokenLoaded((token) => {
+      if (token) {
+        // If we also have config, go to main view
+        // (config state may not be set yet, so we check in render)
+        setPage((prev) => prev === "settings" ? "main" : prev);
       }
-    };
+    });
 
     requestStoredToken();
 
@@ -44,6 +46,8 @@ export default function App() {
   function handleSaveSettings(newConfig: GlobalConfig, token: string) {
     setConfig(newConfig);
     setToken(token);
+    // Persist config to plugin data
+    requestToPlugin("SET_CONFIG", { config: newConfig });
     setPage("main");
   }
 

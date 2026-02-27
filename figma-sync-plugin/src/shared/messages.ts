@@ -1,4 +1,4 @@
-import type { MappingEntry, SyncStatus } from "./types";
+import type { MappingEntry, SyncStatus, GlobalConfig } from "./types";
 
 // --- UI → Sandbox requests ---
 
@@ -7,7 +7,10 @@ export type PluginRequest =
   | { type: "LINK_COMPONENT"; nodeId: string; codePath: string; componentName: string }
   | { type: "UNLINK_COMPONENT"; nodeId: string }
   | { type: "UPDATE_FIGMA_HASH"; nodeId: string }
-  | { type: "GET_SELECTED_NODE" };
+  | { type: "GET_SELECTED_NODE" }
+  | { type: "GET_CONFIG" }
+  | { type: "SET_CONFIG"; config: GlobalConfig }
+  | { type: "UPDATE_CODE_HASH"; nodeId: string; codeHash: string };
 
 export type PluginRequestType = PluginRequest["type"];
 
@@ -17,6 +20,9 @@ export interface ResponseMap {
   UNLINK_COMPONENT: { success: boolean };
   UPDATE_FIGMA_HASH: { hash: string };
   GET_SELECTED_NODE: { nodeId: string | null; nodeName: string | null };
+  GET_CONFIG: { config: GlobalConfig | null };
+  SET_CONFIG: { success: boolean };
+  UPDATE_CODE_HASH: { success: boolean };
 }
 
 // --- Sandbox → UI events ---

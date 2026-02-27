@@ -7,7 +7,7 @@ const ctx = await esbuild.context({
   entryPoints: ["src/sandbox/controller.ts"],
   bundle: true,
   outfile: "dist/code.js",
-  format: "esm",
+  format: "iife",
   target: "es2022",
   minify,
   sourcemap: false,

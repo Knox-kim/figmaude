@@ -28,14 +28,19 @@ interface GitHubFileResponse {
   encoding: string;
 }
 
+function encodePathSegments(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
 export async function getFileSha(
   owner: string,
   repo: string,
   path: string,
   branch: string
 ): Promise<string> {
+  const encodedPath = encodePathSegments(path);
   const data = await githubFetch<GitHubFileResponse>(
-    `/repos/${owner}/${repo}/contents/${path}?ref=${branch}`
+    `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`
   );
   return data.sha;
 }

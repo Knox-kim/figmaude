@@ -16,12 +16,11 @@ interface MainViewProps {
 
 function computeState(mapping: MappingEntry, currentCodeHash: string): SyncState {
   const figmaChanged = mapping.figmaHash !== mapping.lastSyncedHash;
-  const codeChanged =
-    currentCodeHash !== "" && currentCodeHash !== mapping.codeHash && mapping.codeHash !== "";
 
-  if (mapping.codeHash === "") {
-    return figmaChanged ? "figma_changed" : "synced";
-  }
+  // Code changed = current GitHub SHA differs from what was stored at last sync
+  // If codeHash was never set, current code is the baseline (not changed)
+  const codeChanged =
+    mapping.codeHash !== "" && currentCodeHash !== "" && currentCodeHash !== mapping.codeHash;
 
   if (figmaChanged && codeChanged) return "conflict";
   if (figmaChanged) return "figma_changed";
@@ -47,6 +46,15 @@ export default function MainView({ config, onLinkNew, onSettings }: MainViewProp
         paths,
         config.branch
       );
+
+      // Store initial codeHash for mappings that don't have one yet
+      for (const m of rawMappings) {
+        const sha = shas.get(m.linkedFile) ?? "";
+        if (m.codeHash === "" && sha !== "") {
+          m.codeHash = sha;
+          requestToPlugin("UPDATE_CODE_HASH", { nodeId: m.nodeId, codeHash: sha });
+        }
+      }
 
       const withState: MappingWithState[] = rawMappings.map((m) => ({
         ...m,

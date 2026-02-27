@@ -102,6 +102,7 @@ export function unlinkComponent(nodeId: string): boolean {
 export function getAllMappings(): MappingEntry[] {
   const ids = getMappingNodeIds();
   const mappings: MappingEntry[] = [];
+  const validIds: string[] = [];
 
   for (const id of ids) {
     const node = figma.getNodeById(id);
@@ -110,12 +111,30 @@ export function getAllMappings(): MappingEntry[] {
     const entry = getNodeMapping(node);
     if (!entry) continue;
 
+    validIds.push(id);
     // Recalculate current figma hash
     entry.figmaHash = computeFigmaHash(node as SceneNode);
     mappings.push(entry);
   }
 
+  // Clean up stale node IDs
+  if (validIds.length < ids.length) {
+    setMappingNodeIds(validIds);
+  }
+
   return mappings;
+}
+
+export function updateCodeHash(nodeId: string, codeHash: string): boolean {
+  const node = figma.getNodeById(nodeId);
+  if (!node) return false;
+
+  const entry = getNodeMapping(node);
+  if (!entry) return false;
+
+  entry.codeHash = codeHash;
+  setNodeMapping(node, entry);
+  return true;
 }
 
 export function updateFigmaHash(nodeId: string): string | null {
