@@ -81,7 +81,7 @@ export function generateCSS(variables: RawVariableData[], styles: RawStyleData[]
     lines.push("  /* === TextStyles === */");
     for (const s of textStyles.sort((a, b) => a.name.localeCompare(b.name))) {
       const prefix = `--text-${toKebab(s.name)}`;
-      if (s.fontSize) lines.push(`  ${prefix}-size: ${s.fontSize}px;`);
+      if (s.fontSize != null) lines.push(`  ${prefix}-size: ${s.fontSize}px;`);
       if (s.fontFamily) lines.push(`  ${prefix}-family: "${s.fontFamily}";`);
       if (s.fontWeight) lines.push(`  ${prefix}-weight: ${s.fontWeight};`);
       if (s.lineHeight) {

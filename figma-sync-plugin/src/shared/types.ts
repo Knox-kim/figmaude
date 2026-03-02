@@ -40,7 +40,7 @@ export interface VariableSnapshotEntry {
 export interface StyleSnapshotEntry {
   id: string;
   name: string;
-  styleType: "PAINT" | "TEXT" | "EFFECT" | "GRID";
+  styleType: "PAINT" | "TEXT" | "EFFECT";
   paints?: string;
   fontSize?: number;
   fontFamily?: string;

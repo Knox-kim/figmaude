@@ -73,6 +73,40 @@ export async function scanStyles(): Promise<RawStyleData[]> {
   return styles;
 }
 
+// --- Snapshot helpers ---
+
+function toVariableSnapshot(rawVars: RawVariableData[]): TokenSnapshot {
+  return {
+    kind: "variables",
+    entries: rawVars.map((v) => ({
+      id: v.id,
+      name: v.name,
+      resolvedType: v.resolvedType as VariableSnapshotEntry["resolvedType"],
+      collectionName: v.collectionName,
+      valuesByMode: v.valuesByMode as Record<string, string>,
+      codeSyntax: v.codeSyntax,
+    })),
+  };
+}
+
+function toStyleSnapshot(rawStyles: RawStyleData[]): TokenSnapshot {
+  return {
+    kind: "styles",
+    entries: rawStyles.map((s) => ({
+      id: s.id,
+      name: s.name,
+      styleType: s.styleType as StyleSnapshotEntry["styleType"],
+      paints: s.paints,
+      fontSize: s.fontSize,
+      fontFamily: s.fontFamily,
+      fontWeight: s.fontWeight,
+      lineHeight: s.lineHeight,
+      letterSpacing: s.letterSpacing,
+      effects: s.effects,
+    })),
+  };
+}
+
 // --- Storage: single aggregate entries ---
 
 function getTokenMapping(key: string): MappingEntry | null {
@@ -105,17 +139,7 @@ export async function getVariablesMapping(): Promise<{
   const rawVars = await scanVariables();
   mapping.figmaHash = computeVariablesHash(rawVars);
 
-  const currentSnapshot: TokenSnapshot = {
-    kind: "variables",
-    entries: rawVars.map((v) => ({
-      id: v.id,
-      name: v.name,
-      resolvedType: v.resolvedType as VariableSnapshotEntry["resolvedType"],
-      collectionName: v.collectionName,
-      valuesByMode: v.valuesByMode as Record<string, string>,
-      codeSyntax: v.codeSyntax,
-    })),
-  };
+  const currentSnapshot = toVariableSnapshot(rawVars);
 
   return { mapping, currentSnapshot };
 }
@@ -134,17 +158,7 @@ export async function linkVariables(tokenFile: string): Promise<boolean> {
     lastSyncedHash: hash,
     lastSyncedAt: new Date().toISOString(),
     lastSyncSource: "figma",
-    tokenSnapshot: {
-      kind: "variables",
-      entries: rawVars.map((v) => ({
-        id: v.id,
-        name: v.name,
-        resolvedType: v.resolvedType as VariableSnapshotEntry["resolvedType"],
-        collectionName: v.collectionName,
-        valuesByMode: v.valuesByMode as Record<string, string>,
-        codeSyntax: v.codeSyntax,
-      })),
-    },
+    tokenSnapshot: toVariableSnapshot(rawVars),
   };
 
   setTokenMapping(VARIABLES_KEY, entry);
@@ -167,17 +181,7 @@ export async function updateVariablesHash(): Promise<string> {
   mapping.lastSyncedHash = newHash;
   mapping.lastSyncedAt = new Date().toISOString();
   mapping.lastSyncSource = "figma";
-  mapping.tokenSnapshot = {
-    kind: "variables",
-    entries: rawVars.map((v) => ({
-      id: v.id,
-      name: v.name,
-      resolvedType: v.resolvedType as VariableSnapshotEntry["resolvedType"],
-      collectionName: v.collectionName,
-      valuesByMode: v.valuesByMode as Record<string, string>,
-      codeSyntax: v.codeSyntax,
-    })),
-  };
+  mapping.tokenSnapshot = toVariableSnapshot(rawVars);
 
   setTokenMapping(VARIABLES_KEY, mapping);
   return newHash;
@@ -203,21 +207,7 @@ export async function getStylesMapping(): Promise<{
   const rawStyles = await scanStyles();
   mapping.figmaHash = computeStylesHash(rawStyles);
 
-  const currentSnapshot: TokenSnapshot = {
-    kind: "styles",
-    entries: rawStyles.map((s) => ({
-      id: s.id,
-      name: s.name,
-      styleType: s.styleType as StyleSnapshotEntry["styleType"],
-      paints: s.paints,
-      fontSize: s.fontSize,
-      fontFamily: s.fontFamily,
-      fontWeight: s.fontWeight,
-      lineHeight: s.lineHeight,
-      letterSpacing: s.letterSpacing,
-      effects: s.effects,
-    })),
-  };
+  const currentSnapshot = toStyleSnapshot(rawStyles);
 
   return { mapping, currentSnapshot };
 }
@@ -236,21 +226,7 @@ export async function linkStyles(tokenFile: string): Promise<boolean> {
     lastSyncedHash: hash,
     lastSyncedAt: new Date().toISOString(),
     lastSyncSource: "figma",
-    tokenSnapshot: {
-      kind: "styles",
-      entries: rawStyles.map((s) => ({
-        id: s.id,
-        name: s.name,
-        styleType: s.styleType as StyleSnapshotEntry["styleType"],
-        paints: s.paints,
-        fontSize: s.fontSize,
-        fontFamily: s.fontFamily,
-        fontWeight: s.fontWeight,
-        lineHeight: s.lineHeight,
-        letterSpacing: s.letterSpacing,
-        effects: s.effects,
-      })),
-    },
+    tokenSnapshot: toStyleSnapshot(rawStyles),
   };
 
   setTokenMapping(STYLES_KEY, entry);
@@ -273,21 +249,7 @@ export async function updateStylesHash(): Promise<string> {
   mapping.lastSyncedHash = newHash;
   mapping.lastSyncedAt = new Date().toISOString();
   mapping.lastSyncSource = "figma";
-  mapping.tokenSnapshot = {
-    kind: "styles",
-    entries: rawStyles.map((s) => ({
-      id: s.id,
-      name: s.name,
-      styleType: s.styleType as StyleSnapshotEntry["styleType"],
-      paints: s.paints,
-      fontSize: s.fontSize,
-      fontFamily: s.fontFamily,
-      fontWeight: s.fontWeight,
-      lineHeight: s.lineHeight,
-      letterSpacing: s.letterSpacing,
-      effects: s.effects,
-    })),
-  };
+  mapping.tokenSnapshot = toStyleSnapshot(rawStyles);
 
   setTokenMapping(STYLES_KEY, mapping);
   return newHash;

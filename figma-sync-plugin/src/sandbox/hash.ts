@@ -115,7 +115,7 @@ export interface RawVariableData {
   name: string;
   resolvedType: string;
   collectionName: string;
-  valuesByMode: Record<string, unknown>;
+  valuesByMode: Record<string, string>;
   codeSyntax?: string;
 }
 
