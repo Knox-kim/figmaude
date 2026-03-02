@@ -33,8 +33,14 @@ export default function RepoExplorer({
         if (!cancelled) setEntries(data);
       })
       .catch((err) => {
-        if (!cancelled)
-          setError(err instanceof Error ? err.message : "Failed to load directory");
+        if (!cancelled) {
+          // If basePath doesn't exist in repo, fall back to root
+          if (currentPath !== "") {
+            setCurrentPath("");
+          } else {
+            setError(err instanceof Error ? err.message : "Failed to load directory");
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
