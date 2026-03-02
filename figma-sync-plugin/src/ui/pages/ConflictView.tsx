@@ -1,5 +1,6 @@
 import type { MappingWithState } from "../hooks/useSync";
 import StatusBadge from "../components/StatusBadge";
+import DiffViewer from "../components/DiffViewer";
 
 interface ConflictViewProps {
   mapping: MappingWithState;
@@ -39,12 +40,18 @@ export default function ConflictView({
       <div className="space-y-3 mb-4">
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-3">
           <div className="text-xs font-medium text-blue-700 mb-1">Figma Side</div>
-          <div className="text-xs text-blue-600">
-            Design has changed since last sync.
-          </div>
-          <div className="text-xs text-blue-400 font-mono mt-1">
-            Hash: {mapping.figmaHash.slice(0, 12)}...
-          </div>
+          {mapping.lastSyncedSnapshot && mapping.currentSnapshot ? (
+            <DiffViewer before={mapping.lastSyncedSnapshot} after={mapping.currentSnapshot} />
+          ) : (
+            <>
+              <div className="text-xs text-blue-600">
+                Design has changed since last sync.
+              </div>
+              <div className="text-xs text-blue-400 font-mono mt-1">
+                Hash: {mapping.figmaHash.slice(0, 12)}...
+              </div>
+            </>
+          )}
         </div>
 
         <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">

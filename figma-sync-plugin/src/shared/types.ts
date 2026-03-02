@@ -7,6 +7,23 @@ export interface MappingEntry {
   lastSyncedHash: string;
   lastSyncedAt: string;
   lastSyncSource: "figma" | "code";
+  lastSyncedSnapshot?: FlatSnapshot;
+}
+
+export interface FlatSnapshot {
+  type: string;
+  width: number;
+  height: number;
+  fills: string;
+  strokes: string;
+  cornerRadius: string;
+  paddingTop: number;
+  paddingRight: number;
+  paddingBottom: number;
+  paddingLeft: number;
+  layoutMode: string;
+  itemSpacing: number;
+  childCount: number;
 }
 
 export interface GlobalConfig {

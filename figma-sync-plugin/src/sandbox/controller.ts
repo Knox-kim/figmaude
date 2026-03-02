@@ -24,7 +24,7 @@ figma.on("selectionchange", () => {
 
 // Request handlers
 onRequestFromUI("GET_MAPPINGS", async () => {
-  return { mappings: await getAllMappings() };
+  return await getAllMappings();
 });
 
 onRequestFromUI("LINK_COMPONENT", async ({ nodeId, codePath, componentName }) => {

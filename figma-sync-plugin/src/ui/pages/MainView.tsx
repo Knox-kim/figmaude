@@ -47,6 +47,8 @@ export default function MainView({ config, onLinkNew, onSettings, onConflict }: 
               componentName={m.componentName}
               codePath={m.linkedFile}
               state={m.state}
+              lastSyncedSnapshot={m.lastSyncedSnapshot}
+              currentSnapshot={m.currentSnapshot}
               syncing={syncingId === m.nodeId}
               onUnlink={() => handleUnlink(m.nodeId)}
               onMarkSynced={() => handleMarkSynced(m)}

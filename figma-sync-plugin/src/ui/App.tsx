@@ -80,6 +80,9 @@ export default function App() {
         selectedNodeId={selectedNodeId}
         selectedNodeName={selectedNodeName}
         basePath={config.basePath}
+        repoOwner={config.repoOwner}
+        repoName={config.repoName}
+        branch={config.branch}
         onLink={handleLink}
         onCancel={() => setPage("main")}
       />

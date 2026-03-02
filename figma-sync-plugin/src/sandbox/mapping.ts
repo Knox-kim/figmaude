@@ -1,5 +1,5 @@
-import type { MappingEntry, GlobalConfig } from "../shared/types";
-import { computeFigmaHash } from "./hash";
+import type { MappingEntry, GlobalConfig, FlatSnapshot } from "../shared/types";
+import { computeFigmaHash, extractFlatSnapshot } from "./hash";
 
 const GLOBAL_KEY = "figma-sync-config";
 const MAPPING_KEY = "figma-sync-mapping";
@@ -63,7 +63,8 @@ export async function linkComponent(
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) return false;
 
-  const figmaHash = computeFigmaHash(node as SceneNode);
+  const sceneNode = node as SceneNode;
+  const figmaHash = computeFigmaHash(sceneNode);
   const entry: MappingEntry = {
     nodeId,
     linkedFile: codePath,
@@ -73,6 +74,7 @@ export async function linkComponent(
     lastSyncedHash: figmaHash,
     lastSyncedAt: new Date().toISOString(),
     lastSyncSource: "figma",
+    lastSyncedSnapshot: extractFlatSnapshot(sceneNode),
   };
 
   setNodeMapping(node, entry);
@@ -99,9 +101,13 @@ export async function unlinkComponent(nodeId: string): Promise<boolean> {
   return true;
 }
 
-export async function getAllMappings(): Promise<MappingEntry[]> {
+export async function getAllMappings(): Promise<{
+  mappings: MappingEntry[];
+  currentSnapshots: Record<string, FlatSnapshot>;
+}> {
   const ids = getMappingNodeIds();
   const mappings: MappingEntry[] = [];
+  const currentSnapshots: Record<string, FlatSnapshot> = {};
   const validIds: string[] = [];
 
   for (const id of ids) {
@@ -111,9 +117,11 @@ export async function getAllMappings(): Promise<MappingEntry[]> {
     const entry = getNodeMapping(node);
     if (!entry) continue;
 
+    const sceneNode = node as SceneNode;
     validIds.push(id);
     // Recalculate current figma hash
-    entry.figmaHash = computeFigmaHash(node as SceneNode);
+    entry.figmaHash = computeFigmaHash(sceneNode);
+    currentSnapshots[id] = extractFlatSnapshot(sceneNode);
     mappings.push(entry);
   }
 
@@ -122,7 +130,7 @@ export async function getAllMappings(): Promise<MappingEntry[]> {
     setMappingNodeIds(validIds);
   }
 
-  return mappings;
+  return { mappings, currentSnapshots };
 }
 
 export async function updateCodeHash(nodeId: string, codeHash: string): Promise<boolean> {
@@ -144,11 +152,13 @@ export async function updateFigmaHash(nodeId: string): Promise<string | null> {
   const entry = getNodeMapping(node);
   if (!entry) return null;
 
-  const newHash = computeFigmaHash(node as SceneNode);
+  const sceneNode = node as SceneNode;
+  const newHash = computeFigmaHash(sceneNode);
   entry.figmaHash = newHash;
   entry.lastSyncedHash = newHash;
   entry.lastSyncedAt = new Date().toISOString();
   entry.lastSyncSource = "figma";
+  entry.lastSyncedSnapshot = extractFlatSnapshot(sceneNode);
   setNodeMapping(node, entry);
 
   return newHash;

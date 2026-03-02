@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import type { MappingEntry, SyncState, GlobalConfig } from "../../shared/types";
+import type { MappingEntry, SyncState, GlobalConfig, FlatSnapshot } from "../../shared/types";
 import { requestToPlugin } from "../lib/messenger";
 import { getFileShas } from "../lib/github";
 
 export interface MappingWithState extends MappingEntry {
   state: SyncState;
   currentCodeHash: string;
+  currentSnapshot?: FlatSnapshot;
 }
 
 function computeState(mapping: MappingEntry, currentCodeHash: string): SyncState {
@@ -28,7 +29,7 @@ export function useSync(config: GlobalConfig) {
     setLoading(true);
     setError(null);
     try {
-      const { mappings: rawMappings } = await requestToPlugin("GET_MAPPINGS");
+      const { mappings: rawMappings, currentSnapshots } = await requestToPlugin("GET_MAPPINGS");
 
       const paths = rawMappings.map((m) => m.linkedFile);
       const shas = await getFileShas(config.repoOwner, config.repoName, paths, config.branch);
@@ -44,6 +45,7 @@ export function useSync(config: GlobalConfig) {
       const withState: MappingWithState[] = rawMappings.map((m) => ({
         ...m,
         currentCodeHash: shas.get(m.linkedFile) ?? "",
+        currentSnapshot: currentSnapshots[m.nodeId],
         state: computeState(m, shas.get(m.linkedFile) ?? ""),
       }));
 

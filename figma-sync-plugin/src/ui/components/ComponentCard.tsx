@@ -1,10 +1,13 @@
-import type { SyncState } from "../../shared/types";
+import type { SyncState, FlatSnapshot } from "../../shared/types";
 import StatusBadge from "./StatusBadge";
+import { summarizeChanges } from "./DiffViewer";
 
 interface ComponentCardProps {
   componentName: string;
   codePath: string;
   state: SyncState;
+  lastSyncedSnapshot?: FlatSnapshot;
+  currentSnapshot?: FlatSnapshot;
   onUnlink: () => void;
   onMarkSynced: () => void;
   onForceSyncFigma: () => void;
@@ -17,6 +20,8 @@ export default function ComponentCard({
   componentName,
   codePath,
   state,
+  lastSyncedSnapshot,
+  currentSnapshot,
   onUnlink,
   onMarkSynced,
   onForceSyncFigma,
@@ -24,6 +29,13 @@ export default function ComponentCard({
   onResolveConflict,
   syncing,
 }: ComponentCardProps) {
+  const changeSummary =
+    (state === "figma_changed" || state === "conflict") &&
+    lastSyncedSnapshot &&
+    currentSnapshot
+      ? summarizeChanges(lastSyncedSnapshot, currentSnapshot)
+      : null;
+
   return (
     <div className="rounded-lg border border-gray-200 p-3 mb-2">
       <div className="flex items-center justify-between mb-1">
@@ -31,6 +43,9 @@ export default function ComponentCard({
         <StatusBadge state={state} />
       </div>
       <div className="text-xs text-gray-500 mb-2 font-mono">{codePath}</div>
+      {changeSummary && (
+        <div className="text-xs text-amber-600 mb-2">{changeSummary}</div>
+      )}
       <div className="flex items-center gap-2">
         {(state === "figma_changed" || state === "code_changed") && (
           <button

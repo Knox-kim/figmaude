@@ -1,4 +1,4 @@
-import type { MappingEntry, SyncStatus, GlobalConfig } from "./types";
+import type { MappingEntry, SyncStatus, GlobalConfig, FlatSnapshot } from "./types";
 
 // --- UI → Sandbox requests ---
 
@@ -15,7 +15,7 @@ export type PluginRequest =
 export type PluginRequestType = PluginRequest["type"];
 
 export interface ResponseMap {
-  GET_MAPPINGS: { mappings: MappingEntry[] };
+  GET_MAPPINGS: { mappings: MappingEntry[]; currentSnapshots: Record<string, FlatSnapshot> };
   LINK_COMPONENT: { success: boolean };
   UNLINK_COMPONENT: { success: boolean };
   UPDATE_FIGMA_HASH: { hash: string };

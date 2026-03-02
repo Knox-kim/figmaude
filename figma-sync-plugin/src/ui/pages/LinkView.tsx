@@ -1,9 +1,13 @@
 import { useState } from "react";
+import RepoExplorer from "../components/RepoExplorer";
 
 interface LinkViewProps {
   selectedNodeId: string | null;
   selectedNodeName: string | null;
   basePath: string;
+  repoOwner: string;
+  repoName: string;
+  branch: string;
   onLink: (nodeId: string, codePath: string, componentName: string) => Promise<void>;
   onCancel: () => void;
 }
@@ -12,6 +16,9 @@ export default function LinkView({
   selectedNodeId,
   selectedNodeName,
   basePath,
+  repoOwner,
+  repoName,
+  branch,
   onLink,
   onCancel,
 }: LinkViewProps) {
@@ -22,6 +29,7 @@ export default function LinkView({
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showExplorer, setShowExplorer] = useState(false);
 
   async function handleLink() {
     if (!selectedNodeId) {
@@ -75,7 +83,7 @@ export default function LinkView({
         />
       </label>
 
-      <label className="block mb-4">
+      <label className="block mb-1">
         <span className="block text-xs font-medium text-gray-700 mb-1">Code File Path</span>
         <input
           type="text"
@@ -85,6 +93,30 @@ export default function LinkView({
           className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm font-mono"
         />
       </label>
+
+      <button
+        type="button"
+        onClick={() => setShowExplorer(!showExplorer)}
+        className="text-xs text-blue-600 hover:text-blue-800 mb-1"
+      >
+        {showExplorer ? "Hide browser" : "Browse repo..."}
+      </button>
+
+      {showExplorer && (
+        <RepoExplorer
+          owner={repoOwner}
+          repo={repoName}
+          branch={branch}
+          basePath={basePath}
+          onSelect={(path) => {
+            setFilePath(path);
+            setShowExplorer(false);
+          }}
+          onClose={() => setShowExplorer(false)}
+        />
+      )}
+
+      <div className="mb-4" />
 
       <div className="flex gap-2">
         <button

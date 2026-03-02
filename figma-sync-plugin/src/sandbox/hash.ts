@@ -62,3 +62,48 @@ export function computeFigmaHash(node: SceneNode): string {
   const props = extractVisualProps(node);
   return djb2(JSON.stringify(props, replaceMixed));
 }
+
+import type { FlatSnapshot } from "../shared/types";
+
+export function extractFlatSnapshot(node: SceneNode): FlatSnapshot {
+  const snapshot: FlatSnapshot = {
+    type: node.type,
+    width: Math.round(node.width),
+    height: Math.round(node.height),
+    fills: "",
+    strokes: "",
+    cornerRadius: "",
+    paddingTop: 0,
+    paddingRight: 0,
+    paddingBottom: 0,
+    paddingLeft: 0,
+    layoutMode: "NONE",
+    itemSpacing: 0,
+    childCount: 0,
+  };
+
+  if ("fills" in node) {
+    snapshot.fills = JSON.stringify(node.fills, replaceMixed);
+  }
+  if ("strokes" in node) {
+    snapshot.strokes = JSON.stringify(node.strokes, replaceMixed);
+  }
+  if ("cornerRadius" in node) {
+    snapshot.cornerRadius = JSON.stringify(node.cornerRadius, replaceMixed);
+  }
+  if ("paddingTop" in node) {
+    snapshot.paddingTop = node.paddingTop;
+    snapshot.paddingRight = node.paddingRight;
+    snapshot.paddingBottom = node.paddingBottom;
+    snapshot.paddingLeft = node.paddingLeft;
+  }
+  if ("layoutMode" in node) {
+    snapshot.layoutMode = node.layoutMode;
+    snapshot.itemSpacing = node.itemSpacing;
+  }
+  if ("children" in node) {
+    snapshot.childCount = (node.children as SceneNode[]).length;
+  }
+
+  return snapshot;
+}

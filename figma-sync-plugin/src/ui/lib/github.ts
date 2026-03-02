@@ -69,6 +69,30 @@ interface GitHubRepoResponse {
   default_branch: string;
 }
 
+export interface GitHubContentEntry {
+  name: string;
+  path: string;
+  type: "file" | "dir";
+  sha: string;
+}
+
+export async function listDirectory(
+  owner: string,
+  repo: string,
+  path: string,
+  branch: string
+): Promise<GitHubContentEntry[]> {
+  const encodedPath = path ? encodePathSegments(path) : "";
+  const endpoint = encodedPath
+    ? `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`
+    : `/repos/${owner}/${repo}/contents?ref=${encodeURIComponent(branch)}`;
+  const data = await githubFetch<GitHubContentEntry[]>(endpoint);
+  return data.sort((a, b) => {
+    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export async function verifyRepo(
   owner: string,
   repo: string
