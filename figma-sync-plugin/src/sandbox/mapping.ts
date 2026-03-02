@@ -57,15 +57,16 @@ function setNodeMapping(node: BaseNode, entry: MappingEntry): void {
 
 export async function linkComponent(
   nodeId: string,
-  codePath: string,
-  componentName: string
+  codePath: string
 ): Promise<boolean> {
   const node = await figma.getNodeByIdAsync(nodeId);
   if (!node) return false;
 
+  const componentName = codePath.split("/").pop()?.replace(/\.\w+$/, "") ?? codePath;
   const sceneNode = node as SceneNode;
   const figmaHash = computeFigmaHash(sceneNode);
   const entry: MappingEntry = {
+    kind: "component",
     nodeId,
     linkedFile: codePath,
     componentName,
@@ -116,6 +117,7 @@ export async function getAllMappings(): Promise<{
 
     const entry = getNodeMapping(node);
     if (!entry) continue;
+    if (!entry.kind) entry.kind = "component";
 
     const sceneNode = node as SceneNode;
     validIds.push(id);
