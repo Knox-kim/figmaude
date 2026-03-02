@@ -3,13 +3,11 @@ import StatusBadge from "./StatusBadge";
 import { summarizeChanges } from "./DiffViewer";
 
 interface ComponentCardProps {
+  kind: "component" | "style" | "variable";
   componentName: string;
-  codePath: string;
   state: SyncState;
   lastSyncedSnapshot?: FlatSnapshot;
   currentSnapshot?: FlatSnapshot;
-  onUnlink: () => void;
-  onMarkSynced: () => void;
   onForceSyncFigma: () => void;
   onForceSyncCode: () => void;
   onResolveConflict?: () => void;
@@ -17,18 +15,19 @@ interface ComponentCardProps {
 }
 
 export default function ComponentCard({
+  kind,
   componentName,
-  codePath,
   state,
   lastSyncedSnapshot,
   currentSnapshot,
-  onUnlink,
-  onMarkSynced,
   onForceSyncFigma,
   onForceSyncCode,
   onResolveConflict,
   syncing,
 }: ComponentCardProps) {
+  const pushEnabled = state === "figma_changed" || state === "conflict";
+  const pullEnabled = state === "code_changed" || state === "conflict";
+
   const changeSummary =
     (state === "figma_changed" || state === "conflict") &&
     lastSyncedSnapshot &&
@@ -37,40 +36,55 @@ export default function ComponentCard({
       : null;
 
   return (
-    <div className="rounded-lg border border-gray-200 p-3 mb-2">
-      <div className="flex items-center justify-between mb-1">
-        <span className="font-medium text-sm">{componentName}</span>
+    <tr>
+      <td className="border border-gray-200 px-3 py-3 text-center align-middle">
+        <button
+          onClick={onForceSyncFigma}
+          disabled={!pushEnabled || syncing}
+          className={`text-xs font-medium ${
+            pushEnabled && !syncing
+              ? "text-blue-600 hover:text-blue-800 cursor-pointer"
+              : "text-gray-300 cursor-default"
+          }`}
+        >
+          Push to Code
+        </button>
+      </td>
+      <td className="border border-gray-200 px-3 py-3 text-center align-middle">
+        <div className="font-semibold text-sm mb-1">
+          {kind !== "component" && (
+            <span className="text-[10px] font-normal text-gray-400 uppercase tracking-wide mr-1">
+              {kind === "variable" ? "VAR" : "STY"}
+            </span>
+          )}
+          {componentName}
+        </div>
         <StatusBadge state={state} />
-      </div>
-      <div className="text-xs text-gray-500 mb-2 font-mono">{codePath}</div>
-      {changeSummary && (
-        <div className="text-xs text-amber-600 mb-2">{changeSummary}</div>
-      )}
-      <div className="flex items-center gap-2">
-        {(state === "figma_changed" || state === "code_changed") && (
-          <button
-            onClick={onMarkSynced}
-            disabled={syncing}
-            className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-          >
-            {syncing ? "Syncing..." : "Mark as Synced"}
-          </button>
+        {changeSummary && (
+          <div className="text-xs text-amber-600 mt-1">{changeSummary}</div>
         )}
-        {state === "conflict" && (
+        {state === "conflict" && onResolveConflict && (
           <button
             onClick={onResolveConflict}
-            className="rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+            className="text-xs text-red-500 hover:text-red-700 mt-1 block mx-auto"
           >
-            Resolve
+            View Diff
           </button>
         )}
+      </td>
+      <td className="border border-gray-200 px-3 py-3 text-center align-middle">
         <button
-          onClick={onUnlink}
-          className="text-xs text-red-500 hover:text-red-700 ml-auto"
+          onClick={onForceSyncCode}
+          disabled={!pullEnabled || syncing}
+          className={`text-xs font-medium ${
+            pullEnabled && !syncing
+              ? "text-purple-600 hover:text-purple-800 cursor-pointer"
+              : "text-gray-300 cursor-default"
+          }`}
         >
-          Unlink
+          Pull from Code
         </button>
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 }

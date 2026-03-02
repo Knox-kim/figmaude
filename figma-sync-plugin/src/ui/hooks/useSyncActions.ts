@@ -30,14 +30,24 @@ export function useSyncActions(refresh: () => Promise<void>) {
   }, [refresh]);
 
   const handleForceSyncFigma = useCallback(async (mapping: MappingWithState) => {
-    setSyncingId(mapping.nodeId);
+    const id = mapping.nodeId;
+    setSyncingId(id);
     try {
-      await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: mapping.nodeId });
-      if (mapping.currentCodeHash) {
-        await requestToPlugin("UPDATE_CODE_HASH", {
-          nodeId: mapping.nodeId,
-          codeHash: mapping.currentCodeHash,
-        });
+      if (mapping.kind === "variable") {
+        await requestToPlugin("UPDATE_VARIABLES_HASH");
+        if (mapping.currentCodeHash) {
+          await requestToPlugin("UPDATE_VARIABLES_CODE_HASH", { codeHash: mapping.currentCodeHash });
+        }
+      } else if (mapping.kind === "style") {
+        await requestToPlugin("UPDATE_STYLES_HASH");
+        if (mapping.currentCodeHash) {
+          await requestToPlugin("UPDATE_STYLES_CODE_HASH", { codeHash: mapping.currentCodeHash });
+        }
+      } else {
+        await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: id });
+        if (mapping.currentCodeHash) {
+          await requestToPlugin("UPDATE_CODE_HASH", { nodeId: id, codeHash: mapping.currentCodeHash });
+        }
       }
       await refresh();
     } catch (err) {
@@ -48,14 +58,24 @@ export function useSyncActions(refresh: () => Promise<void>) {
   }, [refresh]);
 
   const handleForceSyncCode = useCallback(async (mapping: MappingWithState) => {
-    setSyncingId(mapping.nodeId);
+    const id = mapping.nodeId;
+    setSyncingId(id);
     try {
-      await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: mapping.nodeId });
-      if (mapping.currentCodeHash) {
-        await requestToPlugin("UPDATE_CODE_HASH", {
-          nodeId: mapping.nodeId,
-          codeHash: mapping.currentCodeHash,
-        });
+      if (mapping.kind === "variable") {
+        await requestToPlugin("UPDATE_VARIABLES_HASH");
+        if (mapping.currentCodeHash) {
+          await requestToPlugin("UPDATE_VARIABLES_CODE_HASH", { codeHash: mapping.currentCodeHash });
+        }
+      } else if (mapping.kind === "style") {
+        await requestToPlugin("UPDATE_STYLES_HASH");
+        if (mapping.currentCodeHash) {
+          await requestToPlugin("UPDATE_STYLES_CODE_HASH", { codeHash: mapping.currentCodeHash });
+        }
+      } else {
+        await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: id });
+        if (mapping.currentCodeHash) {
+          await requestToPlugin("UPDATE_CODE_HASH", { nodeId: id, codeHash: mapping.currentCodeHash });
+        }
       }
       await refresh();
     } catch (err) {

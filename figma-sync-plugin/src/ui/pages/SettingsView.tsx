@@ -20,6 +20,7 @@ export default function SettingsView({ config, token, onSave, onBack }: Settings
   const [styling, setStyling] = useState<GlobalConfig["styling"]>(
     config?.styling ?? "tailwind"
   );
+  const [tokenFile, setTokenFile] = useState(config?.tokenFile ?? "src/styles/tokens.css");
   const [tokenInput, setTokenInput] = useState(token ?? "");
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +38,7 @@ export default function SettingsView({ config, token, onSave, onBack }: Settings
       basePath,
       framework,
       styling,
+      tokenFile,
     };
 
     if (!tokenInput.trim()) {
@@ -93,6 +95,18 @@ export default function SettingsView({ config, token, onSave, onBack }: Settings
           placeholder="src/components"
           className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
         />
+      </label>
+
+      <label className="block mb-3">
+        <span className="block text-xs font-medium text-gray-700 mb-1">Token File</span>
+        <input
+          type="text"
+          value={tokenFile}
+          onChange={(e) => setTokenFile(e.target.value)}
+          placeholder="src/styles/tokens.css"
+          className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+        />
+        <span className="block text-xs text-gray-400 mt-1">CSS file for design tokens (variables & styles)</span>
       </label>
 
       <div className="flex gap-3 mb-3">
