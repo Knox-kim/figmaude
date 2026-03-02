@@ -141,23 +141,23 @@ export function useSync(config: GlobalConfig) {
           requestToPlugin("UPDATE_STYLES_CODE_HASH", { codeHash: tokenSha });
         }
 
-        if (varsResult.mapping) {
-          withState.push({
-            ...varsResult.mapping,
-            currentCodeHash: tokenSha,
-            currentSnapshot: undefined,
-            tokenSnapshot: varsResult.currentSnapshot ?? undefined,
-            state: computeState(varsResult.mapping, tokenSha, tokenFetchFailed),
-          });
-        }
-
         if (stylesResult.mapping) {
-          withState.push({
+          withState.unshift({
             ...stylesResult.mapping,
             currentCodeHash: tokenSha,
             currentSnapshot: undefined,
             tokenSnapshot: stylesResult.currentSnapshot ?? undefined,
             state: computeState(stylesResult.mapping, tokenSha, tokenFetchFailed),
+          });
+        }
+
+        if (varsResult.mapping) {
+          withState.unshift({
+            ...varsResult.mapping,
+            currentCodeHash: tokenSha,
+            currentSnapshot: undefined,
+            tokenSnapshot: varsResult.currentSnapshot ?? undefined,
+            state: computeState(varsResult.mapping, tokenSha, tokenFetchFailed),
           });
         }
       }
