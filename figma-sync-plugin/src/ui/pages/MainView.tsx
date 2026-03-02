@@ -1,140 +1,20 @@
-import { useState, useEffect } from "react";
-import type { MappingEntry, SyncState, GlobalConfig } from "../../shared/types";
-import { requestToPlugin } from "../lib/messenger";
-import { getFileSha, getFileShas } from "../lib/github";
+import type { GlobalConfig } from "../../shared/types";
+import { useSync } from "../hooks/useSync";
+import { useSyncActions } from "../hooks/useSyncActions";
 import ComponentCard from "../components/ComponentCard";
-
-interface MappingWithState extends MappingEntry {
-  state: SyncState;
-  currentCodeHash: string;
-}
 
 interface MainViewProps {
   config: GlobalConfig;
   onLinkNew: () => void;
   onSettings: () => void;
+  onConflict: (nodeId: string) => void;
 }
 
-function computeState(mapping: MappingEntry, currentCodeHash: string): SyncState {
-  const figmaChanged = mapping.figmaHash !== mapping.lastSyncedHash;
-  const codeChanged =
-    mapping.codeHash !== "" && currentCodeHash !== "" && currentCodeHash !== mapping.codeHash;
+export default function MainView({ config, onLinkNew, onSettings, onConflict }: MainViewProps) {
+  const { mappings, loading, error, refresh } = useSync(config);
+  const { syncingId, actionError, handleUnlink, handleMarkSynced, handleForceSyncFigma, handleForceSyncCode } = useSyncActions(refresh);
 
-  if (figmaChanged && codeChanged) return "conflict";
-  if (figmaChanged) return "figma_changed";
-  if (codeChanged) return "code_changed";
-  return "synced";
-}
-
-export default function MainView({ config, onLinkNew, onSettings }: MainViewProps) {
-  const [mappings, setMappings] = useState<MappingWithState[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [syncingId, setSyncingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function refresh() {
-    setLoading(true);
-    setError(null);
-    try {
-      const { mappings: rawMappings } = await requestToPlugin("GET_MAPPINGS");
-
-      const paths = rawMappings.map((m) => m.linkedFile);
-      const shas = await getFileShas(
-        config.repoOwner,
-        config.repoName,
-        paths,
-        config.branch
-      );
-
-      for (const m of rawMappings) {
-        const sha = shas.get(m.linkedFile) ?? "";
-        if (m.codeHash === "" && sha !== "") {
-          m.codeHash = sha;
-          requestToPlugin("UPDATE_CODE_HASH", { nodeId: m.nodeId, codeHash: sha });
-        }
-      }
-
-      const withState: MappingWithState[] = rawMappings.map((m) => ({
-        ...m,
-        currentCodeHash: shas.get(m.linkedFile) ?? "",
-        state: computeState(m, shas.get(m.linkedFile) ?? ""),
-      }));
-
-      setMappings(withState);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load mappings");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  async function handleUnlink(nodeId: string) {
-    await requestToPlugin("UNLINK_COMPONENT", { nodeId });
-    refresh();
-  }
-
-  async function handleMarkSynced(mapping: MappingWithState) {
-    setSyncingId(mapping.nodeId);
-    try {
-      // Update figma hash (marks current figma state as synced baseline)
-      await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: mapping.nodeId });
-      // Update code hash to current GitHub SHA
-      if (mapping.currentCodeHash) {
-        await requestToPlugin("UPDATE_CODE_HASH", {
-          nodeId: mapping.nodeId,
-          codeHash: mapping.currentCodeHash,
-        });
-      }
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to mark as synced");
-    } finally {
-      setSyncingId(null);
-    }
-  }
-
-  async function handleForceSyncFigma(mapping: MappingWithState) {
-    // Keep Figma as source of truth — reset baseline to current figma hash
-    setSyncingId(mapping.nodeId);
-    try {
-      await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: mapping.nodeId });
-      if (mapping.currentCodeHash) {
-        await requestToPlugin("UPDATE_CODE_HASH", {
-          nodeId: mapping.nodeId,
-          codeHash: mapping.currentCodeHash,
-        });
-      }
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync");
-    } finally {
-      setSyncingId(null);
-    }
-  }
-
-  async function handleForceSyncCode(mapping: MappingWithState) {
-    // Keep Code as source of truth — reset baseline to current code hash
-    setSyncingId(mapping.nodeId);
-    try {
-      // Update figma hash first (so figma side is marked as current)
-      await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: mapping.nodeId });
-      if (mapping.currentCodeHash) {
-        await requestToPlugin("UPDATE_CODE_HASH", {
-          nodeId: mapping.nodeId,
-          codeHash: mapping.currentCodeHash,
-        });
-      }
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync");
-    } finally {
-      setSyncingId(null);
-    }
-  }
+  const displayError = error || actionError;
 
   return (
     <div className="p-4">
@@ -149,8 +29,8 @@ export default function MainView({ config, onLinkNew, onSettings }: MainViewProp
         {config.repoOwner}/{config.repoName} &middot; {config.branch}
       </div>
 
-      {error && (
-        <div className="mb-3 rounded bg-red-50 p-2 text-xs text-red-600">{error}</div>
+      {displayError && (
+        <div className="mb-3 rounded bg-red-50 p-2 text-xs text-red-600">{displayError}</div>
       )}
 
       {loading ? (
@@ -172,6 +52,7 @@ export default function MainView({ config, onLinkNew, onSettings }: MainViewProp
               onMarkSynced={() => handleMarkSynced(m)}
               onForceSyncFigma={() => handleForceSyncFigma(m)}
               onForceSyncCode={() => handleForceSyncCode(m)}
+              onResolveConflict={() => onConflict(m.nodeId)}
             />
           ))}
         </div>

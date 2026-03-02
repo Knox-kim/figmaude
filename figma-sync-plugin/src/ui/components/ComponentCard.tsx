@@ -9,6 +9,7 @@ interface ComponentCardProps {
   onMarkSynced: () => void;
   onForceSyncFigma: () => void;
   onForceSyncCode: () => void;
+  onResolveConflict?: () => void;
   syncing: boolean;
 }
 
@@ -20,6 +21,7 @@ export default function ComponentCard({
   onMarkSynced,
   onForceSyncFigma,
   onForceSyncCode,
+  onResolveConflict,
   syncing,
 }: ComponentCardProps) {
   return (
@@ -40,22 +42,12 @@ export default function ComponentCard({
           </button>
         )}
         {state === "conflict" && (
-          <>
-            <button
-              onClick={onForceSyncFigma}
-              disabled={syncing}
-              className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-            >
-              {syncing ? "..." : "Keep Figma"}
-            </button>
-            <button
-              onClick={onForceSyncCode}
-              disabled={syncing}
-              className="rounded bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50"
-            >
-              {syncing ? "..." : "Keep Code"}
-            </button>
-          </>
+          <button
+            onClick={onResolveConflict}
+            className="rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+          >
+            Resolve
+          </button>
         )}
         <button
           onClick={onUnlink}
