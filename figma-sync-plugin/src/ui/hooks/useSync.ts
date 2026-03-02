@@ -97,7 +97,8 @@ export function useSync(config: GlobalConfig) {
       }));
 
       // --- Token mappings (Variables & Styles) ---
-      if (config.tokenFile) {
+      const tokenFile = config.tokenFile || "src/styles/tokens.css";
+      {
         const [varsResult, stylesResult] = await Promise.all([
           requestToPlugin("GET_VARIABLES_MAPPING"),
           requestToPlugin("GET_STYLES_MAPPING"),
@@ -108,23 +109,23 @@ export function useSync(config: GlobalConfig) {
         let tokenFetchFailed = false;
         try {
           const { shas: tokenShas, errors: tokenErrors } = await getFileShas(
-            config.repoOwner, config.repoName, [config.tokenFile], config.branch
+            config.repoOwner, config.repoName, [tokenFile], config.branch
           );
-          tokenSha = tokenShas.get(config.tokenFile) ?? "";
-          tokenFetchFailed = tokenErrors.has(config.tokenFile);
+          tokenSha = tokenShas.get(tokenFile) ?? "";
+          tokenFetchFailed = tokenErrors.has(tokenFile);
         } catch {
           tokenFetchFailed = true;
         }
 
         // Auto-link if not yet linked
         if (!varsResult.mapping) {
-          await requestToPlugin("LINK_VARIABLES", { tokenFile: config.tokenFile });
+          await requestToPlugin("LINK_VARIABLES", { tokenFile });
           const fresh = await requestToPlugin("GET_VARIABLES_MAPPING");
           varsResult.mapping = fresh.mapping;
           varsResult.currentSnapshot = fresh.currentSnapshot;
         }
         if (!stylesResult.mapping) {
-          await requestToPlugin("LINK_STYLES", { tokenFile: config.tokenFile });
+          await requestToPlugin("LINK_STYLES", { tokenFile });
           const fresh = await requestToPlugin("GET_STYLES_MAPPING");
           stylesResult.mapping = fresh.mapping;
           stylesResult.currentSnapshot = fresh.currentSnapshot;
