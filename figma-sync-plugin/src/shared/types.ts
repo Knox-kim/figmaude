@@ -1,4 +1,5 @@
 export interface MappingEntry {
+  kind: "component" | "style" | "variable";
   nodeId: string;
   linkedFile: string;
   componentName: string;
@@ -8,6 +9,7 @@ export interface MappingEntry {
   lastSyncedAt: string;
   lastSyncSource: "figma" | "code";
   lastSyncedSnapshot?: FlatSnapshot;
+  tokenSnapshot?: TokenSnapshot;
 }
 
 export interface FlatSnapshot {
@@ -26,6 +28,32 @@ export interface FlatSnapshot {
   childCount: number;
 }
 
+export interface VariableSnapshotEntry {
+  id: string;
+  name: string;
+  resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN";
+  collectionName: string;
+  valuesByMode: Record<string, string>;
+  codeSyntax?: string;
+}
+
+export interface StyleSnapshotEntry {
+  id: string;
+  name: string;
+  styleType: "PAINT" | "TEXT" | "EFFECT" | "GRID";
+  paints?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: string;
+  lineHeight?: string;
+  letterSpacing?: string;
+  effects?: string;
+}
+
+export type TokenSnapshot =
+  | { kind: "variables"; entries: VariableSnapshotEntry[] }
+  | { kind: "styles"; entries: StyleSnapshotEntry[] };
+
 export interface GlobalConfig {
   repoOwner: string;
   repoName: string;
@@ -33,6 +61,7 @@ export interface GlobalConfig {
   basePath: string;
   framework: "react" | "vue";
   styling: "tailwind" | "css-modules";
+  tokenFile: string;
 }
 
 export type SyncState =

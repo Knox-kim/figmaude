@@ -107,3 +107,46 @@ export function extractFlatSnapshot(node: SceneNode): FlatSnapshot {
 
   return snapshot;
 }
+
+// --- Token hashing (Variables & Styles) ---
+
+export interface RawVariableData {
+  id: string;
+  name: string;
+  resolvedType: string;
+  collectionName: string;
+  valuesByMode: Record<string, unknown>;
+  codeSyntax?: string;
+}
+
+export interface RawStyleData {
+  id: string;
+  name: string;
+  styleType: string;
+  paints?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: string;
+  lineHeight?: string;
+  letterSpacing?: string;
+  effects?: string;
+}
+
+export function computeVariablesHash(variables: RawVariableData[]): string {
+  const sorted = [...variables].sort((a, b) => a.name.localeCompare(b.name));
+  const serialized = sorted.map(
+    (v) => `${v.name}:${v.resolvedType}:${JSON.stringify(v.valuesByMode)}`
+  ).join("|");
+  return djb2(serialized);
+}
+
+export function computeStylesHash(styles: RawStyleData[]): string {
+  const sorted = [...styles].sort((a, b) => a.name.localeCompare(b.name));
+  const serialized = sorted.map((s) => {
+    const props = [s.name, s.styleType, s.paints, s.fontSize, s.fontFamily, s.fontWeight, s.lineHeight, s.letterSpacing, s.effects]
+      .map(v => v ?? "")
+      .join(":");
+    return props;
+  }).join("|");
+  return djb2(serialized);
+}
