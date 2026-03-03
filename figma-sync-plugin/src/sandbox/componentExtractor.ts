@@ -390,7 +390,13 @@ async function extractChild(
 function extractProperties(
   node: ComponentNode | ComponentSetNode
 ): ComponentDescriptorProperty[] | undefined {
-  const defs = node.componentPropertyDefinitions;
+  let defs: ComponentPropertyDefinitions;
+  try {
+    defs = node.componentPropertyDefinitions;
+  } catch {
+    // ComponentSet with validation errors (e.g. conflicting variants) throws here
+    return undefined;
+  }
   if (!defs || Object.keys(defs).length === 0) return undefined;
 
   const result: ComponentDescriptorProperty[] = [];
