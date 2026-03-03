@@ -114,7 +114,7 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
           // File doesn't exist yet
         }
 
-        const { sha: newSha } = await updateFile({
+        await updateFile({
           owner: config.repoOwner,
           repo: config.repoName,
           path: jsonPath,
@@ -124,9 +124,11 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
           sha: existingSha,
         });
 
+        // Snapshot the code file's current SHA as the sync baseline
+        // Change detection tracks the code file (linkedFile), not the JSON file
         reportProgress(id, "Updating hashes...");
         await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: id });
-        await requestToPlugin("UPDATE_CODE_HASH", { nodeId: id, codeHash: newSha });
+        await requestToPlugin("UPDATE_CODE_HASH", { nodeId: id, codeHash: mapping.currentCodeHash });
       }
 
       await refresh();
@@ -172,7 +174,7 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
         // Component pull: read JSON from GitHub and apply to Figma
         reportProgress(id, "Reading component JSON from GitHub...");
         const jsonPath = `.figma/components/${mapping.componentName}.json`;
-        const { content, sha } = await getFileContent(
+        const { content } = await getFileContent(
           config.repoOwner, config.repoName, jsonPath, config.branch
         );
 
@@ -184,13 +186,14 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
           json,
         });
 
+        // Snapshot the code file's current SHA as the sync baseline
         reportProgress(id, "Updating hashes...");
         if (newNodeId !== id) {
           await requestToPlugin("LINK_COMPONENT", { nodeId: newNodeId, codePath: mapping.linkedFile });
           await requestToPlugin("UNLINK_COMPONENT", { nodeId: id });
         }
         await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: newNodeId });
-        await requestToPlugin("UPDATE_CODE_HASH", { nodeId: newNodeId, codeHash: sha });
+        await requestToPlugin("UPDATE_CODE_HASH", { nodeId: newNodeId, codeHash: mapping.currentCodeHash });
       }
 
       await refresh();

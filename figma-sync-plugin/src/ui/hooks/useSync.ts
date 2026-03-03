@@ -69,27 +69,18 @@ export function useSync(config: GlobalConfig) {
       }
 
       // --- Fetch code hashes for all mapped files ---
-      // Components track the JSON descriptor file; tokens track the CSS file.
-      const hashPathFor = (m: MappingEntry) =>
-        m.kind === "component"
-          ? `.figma/components/${m.componentName}.json`
-          : m.linkedFile;
-
-      const paths = rawMappings.map(hashPathFor);
+      // Change detection uses the CODE file (linkedFile), not the JSON descriptor.
+      // The JSON is only the transport format for sync operations.
+      const paths = rawMappings.map((m) => m.linkedFile);
       const { shas, errors } = await getFileShas(config.repoOwner, config.repoName, paths, config.branch);
 
-      // Filter out 404s for component JSON files — they don't exist until first Push to Code
-      const realErrors = [...errors.entries()].filter(
-        ([p, e]) => !(p.startsWith(".figma/components/") && e.includes("404"))
-      );
-      if (realErrors.length > 0) {
-        const msgs = realErrors.map(([p, e]) => `${p}: ${e}`);
+      if (errors.size > 0) {
+        const msgs = [...errors.entries()].map(([p, e]) => `${p}: ${e}`);
         setError(`GitHub API errors: ${msgs.join(", ")}`);
       }
 
       for (const m of rawMappings) {
-        const p = hashPathFor(m);
-        const sha = shas.get(p) ?? "";
+        const sha = shas.get(m.linkedFile) ?? "";
         if (m.codeHash === "" && sha !== "") {
           m.codeHash = sha;
           requestToPlugin("UPDATE_CODE_HASH", { nodeId: m.nodeId, codeHash: sha });
@@ -97,14 +88,12 @@ export function useSync(config: GlobalConfig) {
       }
 
       const withState: MappingWithState[] = rawMappings.map((m) => {
-        const p = hashPathFor(m);
-        // Component JSON 404 = file not created yet, not a real fetch failure
-        const isJsonNotFound = m.kind === "component" && errors.has(p) && errors.get(p)?.includes("404");
+        const sha = shas.get(m.linkedFile) ?? "";
         return {
           ...m,
-          currentCodeHash: shas.get(p) ?? "",
+          currentCodeHash: sha,
           currentSnapshot: currentSnapshots[m.nodeId],
-          state: computeState(m, shas.get(p) ?? "", errors.has(p) && !isJsonNotFound),
+          state: computeState(m, sha, errors.has(m.linkedFile)),
         };
       });
 
