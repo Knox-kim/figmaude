@@ -1,4 +1,4 @@
-import type { MappingEntry, SyncStatus, GlobalConfig, FlatSnapshot, TokenSnapshot } from "./types";
+import type { MappingEntry, SyncStatus, GlobalConfig, FlatSnapshot, TokenSnapshot, ComponentDescriptor } from "./types";
 
 // --- UI → Sandbox requests ---
 
@@ -24,7 +24,30 @@ export type PluginRequest =
   | { type: "UPDATE_STYLES_HASH" }
   | { type: "UPDATE_VARIABLES_CODE_HASH"; codeHash: string }
   | { type: "UPDATE_STYLES_CODE_HASH"; codeHash: string }
-  | { type: "GENERATE_CSS" };
+  | { type: "GENERATE_CSS" }
+  | { type: "GET_FILE_KEY" }
+  | { type: "APPLY_VARIABLE_VALUES"; values: ApplyVariableValuesPayload[] }
+  | { type: "APPLY_STYLE_VALUES"; values: ApplyStyleValuesPayload[] }
+  | { type: "APPLY_COMPONENT_JSON"; nodeId: string; json: ComponentDescriptor }
+  | { type: "EXTRACT_COMPONENT_JSON"; nodeId: string };
+
+export interface ApplyVariableValuesPayload {
+  name: string;
+  resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN";
+  valuesByMode: Record<string, string>; // modeId/modeName → JSON-serialized value
+}
+
+export interface ApplyStyleValuesPayload {
+  name: string;
+  styleType: "PAINT" | "TEXT" | "EFFECT";
+  paints?: string;       // JSON-serialized Paint[]
+  fontSize?: number;
+  fontFamily?: string;
+  fontWeight?: string;
+  lineHeight?: string;   // JSON-serialized LineHeight
+  letterSpacing?: string; // JSON-serialized LetterSpacing
+  effects?: string;      // JSON-serialized Effect[]
+}
 
 export type PluginRequestType = PluginRequest["type"];
 
@@ -51,6 +74,11 @@ export interface ResponseMap {
   UPDATE_VARIABLES_CODE_HASH: { success: boolean };
   UPDATE_STYLES_CODE_HASH: { success: boolean };
   GENERATE_CSS: { css: string };
+  GET_FILE_KEY: { fileKey: string };
+  APPLY_VARIABLE_VALUES: { success: boolean; updated: number };
+  APPLY_STYLE_VALUES: { success: boolean; updated: number };
+  APPLY_COMPONENT_JSON: { success: boolean; nodeId: string };
+  EXTRACT_COMPONENT_JSON: { json: ComponentDescriptor };
 }
 
 // --- Sandbox → UI events ---
