@@ -11,7 +11,9 @@
     "build:ui": "vite build",
     "typecheck": "npm run typecheck:sandbox && npm run typecheck:ui",
     "typecheck:sandbox": "tsc --noEmit -p tsconfig.sandbox.json",
-    "typecheck:ui": "tsc --noEmit -p tsconfig.json"
+    "typecheck:ui": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "react": "^19.0.0",
@@ -28,6 +30,7 @@
     "tailwindcss": "^4.1.0",
     "typescript": "^5.7.0",
     "vite": "^6.2.0",
-    "vite-plugin-singlefile": "^2.3.0"
+    "vite-plugin-singlefile": "^2.3.0",
+    "vitest": "^4.0.18"
   }
 }
