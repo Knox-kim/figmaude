@@ -130,6 +130,15 @@ export function generateCSS(
           lines.push(`  ${prefix}-line-height: normal;`);
         }
       }
+      if (s.letterSpacing) {
+        try {
+          const ls = JSON.parse(s.letterSpacing);
+          if (ls.unit === "PIXELS") lines.push(`  ${prefix}-letter-spacing: ${ls.value}px;`);
+          else if (ls.unit === "PERCENT") lines.push(`  ${prefix}-letter-spacing: ${ls.value}%;`);
+        } catch {
+          // skip malformed
+        }
+      }
     }
     lines.push("");
   }
@@ -137,20 +146,33 @@ export function generateCSS(
   if (effectStyles.length > 0) {
     lines.push("  /* === EffectStyles === */");
     for (const s of effectStyles.sort((a, b) => a.name.localeCompare(b.name))) {
-      if (s.effects) {
-        try {
-          const effects = JSON.parse(s.effects);
-          const shadow = effects[0];
-          if (shadow?.type === "DROP_SHADOW") {
-            const { offset, radius, color } = shadow;
+      if (!s.effects) continue;
+      try {
+        const effects = JSON.parse(s.effects);
+        const shadows: string[] = [];
+        const blurs: { type: string; radius: number }[] = [];
+
+        for (const effect of effects) {
+          if (effect.visible === false) continue;
+          if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+            const { offset, radius, color } = effect;
             const rgba = `rgba(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}, ${color.a})`;
-            lines.push(`  --shadow-${toKebab(s.name)}: ${offset.x}px ${offset.y}px ${radius}px ${rgba};`);
-          } else if (shadow?.type === "LAYER_BLUR" || shadow?.type === "BACKGROUND_BLUR") {
-            lines.push(`  --blur-${toKebab(s.name)}: ${shadow.radius}px;`);
+            const inset = effect.type === "INNER_SHADOW" ? "inset " : "";
+            shadows.push(`${inset}${offset.x}px ${offset.y}px ${radius}px ${rgba}`);
+          } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+            blurs.push({ type: effect.type, radius: effect.radius });
           }
-        } catch {
-          lines.push(`  /* --effect-${toKebab(s.name)}: complex effect */`);
         }
+
+        if (shadows.length > 0) {
+          lines.push(`  --shadow-${toKebab(s.name)}: ${shadows.join(", ")};`);
+        }
+        for (const blur of blurs) {
+          const blurPrefix = blur.type === "BACKGROUND_BLUR" ? "bg-blur" : "blur";
+          lines.push(`  --${blurPrefix}-${toKebab(s.name)}: ${blur.radius}px;`);
+        }
+      } catch {
+        lines.push(`  /* --effect-${toKebab(s.name)}: complex effect */`);
       }
     }
     lines.push("");

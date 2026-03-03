@@ -80,7 +80,7 @@ export function groupTextStyleTokens(
   for (const [prop, value] of textTokens) {
     // e.g. "--text-heading-1-size" → suffix = "size", baseName = "heading-1"
     const withoutPrefix = prop.replace(/^--text-/, "");
-    const suffixes = ["size", "family", "weight", "line-height"];
+    const suffixes = ["size", "family", "weight", "line-height", "letter-spacing"];
     let matchedSuffix = "";
     for (const s of suffixes) {
       if (withoutPrefix.endsWith("-" + s)) {
@@ -112,6 +112,14 @@ export function groupTextStyleTokens(
         payload.lineHeight = JSON.stringify({ unit: "PERCENT", value: parseFloat(lh) });
       } else {
         payload.lineHeight = JSON.stringify({ unit: "AUTO", value: 0 });
+      }
+    }
+    if (props["letter-spacing"]) {
+      const ls = props["letter-spacing"];
+      if (ls.endsWith("px")) {
+        payload.letterSpacing = JSON.stringify({ unit: "PIXELS", value: parseFloat(ls) });
+      } else if (ls.endsWith("%")) {
+        payload.letterSpacing = JSON.stringify({ unit: "PERCENT", value: parseFloat(ls) });
       }
     }
     return payload;
@@ -178,6 +186,16 @@ export function parseCSSTokenFile(css: string): ParsedTokens {
           styleType: "EFFECT",
           effects: parseShadowValue(propName, propValue),
         });
+      } else if (propName.startsWith("--bg-blur-")) {
+        effectStyles.push({
+          name: cssNameToFigmaName(propName, "bg-blur"),
+          styleType: "EFFECT",
+          effects: JSON.stringify([{
+            type: "BACKGROUND_BLUR",
+            radius: parseFloat(propValue),
+            visible: true,
+          }]),
+        });
       } else if (propName.startsWith("--blur-")) {
         effectStyles.push({
           name: cssNameToFigmaName(propName, "blur"),
@@ -238,24 +256,38 @@ export function parseCSSTokenFile(css: string): ParsedTokens {
   return { variables, paintStyles, textStyles, effectStyles };
 }
 
-function parseShadowValue(propName: string, value: string): string {
-  // e.g. "2px 4px 8px rgba(0, 0, 0, 0.25)"
-  const match = value.match(
-    /(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/
+function parseShadowValue(_propName: string, value: string): string {
+  // Split by comma after closing paren — separates individual shadows
+  // e.g. "0px 4px 8px rgba(0, 0, 0, 0.25), inset 0px 1px 2px rgba(255, 255, 255, 0.1)"
+  const shadowParts = value.split(/\)\s*,\s*/).map((s, i, arr) =>
+    i < arr.length - 1 ? s + ")" : s
   );
-  if (!match) return "[]";
+  const effects = [];
 
-  const [, x, y, blur, r, g, b, a] = match;
-  return JSON.stringify([{
-    type: "DROP_SHADOW",
-    offset: { x: parseFloat(x), y: parseFloat(y) },
-    radius: parseFloat(blur),
-    color: {
-      r: parseInt(r) / 255,
-      g: parseInt(g) / 255,
-      b: parseInt(b) / 255,
-      a: parseFloat(a),
-    },
-    visible: true,
-  }]);
+  for (const part of shadowParts) {
+    const trimmed = part.trim();
+    const isInset = trimmed.startsWith("inset ");
+    const shadowStr = isInset ? trimmed.slice(6) : trimmed;
+
+    const match = shadowStr.match(
+      /(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+(-?\d+(?:\.\d+)?)px\s+rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/
+    );
+    if (!match) continue;
+
+    const [, x, y, blur, r, g, b, a] = match;
+    effects.push({
+      type: isInset ? "INNER_SHADOW" : "DROP_SHADOW",
+      offset: { x: parseFloat(x), y: parseFloat(y) },
+      radius: parseFloat(blur),
+      color: {
+        r: parseInt(r) / 255,
+        g: parseInt(g) / 255,
+        b: parseInt(b) / 255,
+        a: parseFloat(a),
+      },
+      visible: true,
+    });
+  }
+
+  return JSON.stringify(effects);
 }
