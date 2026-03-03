@@ -10,6 +10,7 @@ import type {
   ComponentDescriptorProperty,
   ComponentDescriptorVariantOverride,
 } from "../shared/types";
+import { parseDescription } from "../shared/descriptionParser";
 
 // --- Helpers ---
 
@@ -665,7 +666,13 @@ export async function extractComponentJSON(
   };
 
   if (node.description) {
-    descriptor.description = node.description;
+    const parsed = parseDescription(node.description);
+    if (parsed.plainDescription) {
+      descriptor.description = parsed.plainDescription;
+    }
+    if (Object.keys(parsed.annotations).length > 0) {
+      descriptor.annotations = parsed.annotations;
+    }
   }
 
   // Properties

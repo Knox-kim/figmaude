@@ -167,10 +167,23 @@ export interface ComponentDescriptorVariantOverride {
   };
 }
 
+export interface ComponentAnnotations {
+  onClick?: string;
+  onChange?: string;
+  onHover?: string;
+  animation?: string;
+  state?: string;
+  a11y?: string;
+  responsive?: string;
+  notes?: string;
+  [key: string]: string | undefined;
+}
+
 export interface ComponentDescriptor {
   $schema: string;
   name: string;
   description?: string;
+  annotations?: ComponentAnnotations;
   properties?: ComponentDescriptorProperty[];
   layout?: ComponentDescriptorLayout;
   styles?: ComponentDescriptorStyles;
