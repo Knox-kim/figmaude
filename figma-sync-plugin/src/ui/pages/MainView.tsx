@@ -11,7 +11,7 @@ interface MainViewProps {
 
 export default function MainView({ config, onSettings, onConflict }: MainViewProps) {
   const { mappings, loading, error, autoLinkedCount, refresh } = useSync(config);
-  const { syncingId, actionError, handleForceSyncFigma, handleForceSyncCode } = useSyncActions(refresh);
+  const { syncingId, actionError, progress, handleForceSyncFigma, handleForceSyncCode } = useSyncActions(config, refresh);
 
   const displayError = error || actionError;
 
@@ -77,8 +77,10 @@ export default function MainView({ config, onSettings, onConflict }: MainViewPro
                 lastSyncedSnapshot={m.lastSyncedSnapshot}
                 currentSnapshot={m.currentSnapshot}
                 syncing={syncingId === m.nodeId}
+                progressMessage={progress?.nodeId === m.nodeId ? progress.message : undefined}
                 onForceSyncFigma={() => handleForceSyncFigma(m)}
                 onForceSyncCode={() => handleForceSyncCode(m)}
+                onCopyContext={undefined}
                 onResolveConflict={() => onConflict(m.nodeId)}
               />
             ))}

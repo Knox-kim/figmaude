@@ -14,8 +14,6 @@ type Page = "main" | "link" | "settings" | "conflict";
 export default function App() {
   const [page, setPage] = useState<Page>("settings");
   const [config, setConfig] = useState<GlobalConfig | null>(null);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [selectedNodeName, setSelectedNodeName] = useState<string | null>(null);
   const [conflictNodeId, setConflictNodeId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,28 +31,13 @@ export default function App() {
 
     requestStoredToken();
 
-    const unsubscribe = onPluginEvent((event) => {
-      if (event.type === "SELECTION_CHANGED") {
-        setSelectedNodeId(event.nodeId);
-        setSelectedNodeName(event.nodeName);
-      }
-    });
-
-    return unsubscribe;
+    return onPluginEvent(() => {});
   }, []);
 
   function handleSaveSettings(newConfig: GlobalConfig, token: string) {
     setConfig(newConfig);
     setToken(token);
     requestToPlugin("SET_CONFIG", { config: newConfig });
-    setPage("main");
-  }
-
-  async function handleLink(nodeId: string, codePath: string, componentName: string) {
-    const { success } = await requestToPlugin("LINK_COMPONENT", { nodeId, codePath, componentName });
-    if (!success) {
-      throw new Error("Failed to link: node may not be accessible on this page");
-    }
     setPage("main");
   }
 
@@ -77,13 +60,11 @@ export default function App() {
   if (page === "link") {
     return (
       <LinkView
-        selectedNodeId={selectedNodeId}
-        selectedNodeName={selectedNodeName}
         basePath={config.basePath}
         repoOwner={config.repoOwner}
         repoName={config.repoName}
         branch={config.branch}
-        onLink={handleLink}
+        onDone={() => setPage("main")}
         onCancel={() => setPage("main")}
       />
     );
@@ -102,7 +83,6 @@ export default function App() {
   return (
     <MainView
       config={config}
-      onLinkNew={() => setPage("link")}
       onSettings={() => setPage("settings")}
       onConflict={handleConflict}
     />
@@ -119,7 +99,7 @@ function ConflictPage({
   onBack: () => void;
 }) {
   const { mappings, refresh } = useSync(config);
-  const { syncingId, handleForceSyncFigma, handleForceSyncCode } = useSyncActions(refresh);
+  const { syncingId, handleForceSyncFigma, handleForceSyncCode } = useSyncActions(config, refresh);
 
   const mapping = mappings.find((m) => m.nodeId === conflictNodeId);
 
@@ -149,6 +129,7 @@ function ConflictPage({
       }}
       onBack={onBack}
       syncing={syncingId === conflictNodeId}
+      isComponent={(mapping.kind ?? "component") === "component"}
     />
   );
 }
