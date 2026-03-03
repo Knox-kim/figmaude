@@ -12,6 +12,7 @@ import {
 import {
   scanVariables,
   scanStyles,
+  getModeInfo,
   getVariablesMapping,
   getStylesMapping,
   linkVariables,
@@ -24,6 +25,7 @@ import {
   updateStylesCodeHash,
 } from "./tokenMapping";
 import { generateCSS } from "./cssGenerator";
+import type { ModeInfo } from "./cssGenerator";
 import { extractComponentJSON } from "./componentExtractor";
 import { applyComponentJSON } from "./componentBuilder";
 
@@ -165,8 +167,16 @@ onRequestFromUI("UPDATE_STYLES_CODE_HASH", async ({ codeHash }) => {
 });
 
 onRequestFromUI("GENERATE_CSS", async () => {
-  const [variables, styles] = await Promise.all([scanVariables(), scanStyles()]);
-  return { css: generateCSS(variables, styles) };
+  const [variables, styles, modeData] = await Promise.all([
+    scanVariables(),
+    scanStyles(),
+    getModeInfo(),
+  ]);
+  const modeInfo: ModeInfo = {
+    modeMap: new Map(modeData.modeMap),
+    defaultModes: new Map(modeData.defaultModes),
+  };
+  return { css: generateCSS(variables, styles, modeInfo) };
 });
 
 // --- Write handlers for bidirectional sync ---
@@ -188,10 +198,14 @@ onRequestFromUI("APPLY_VARIABLE_VALUES", async ({ values }) => {
     if (!collection) continue;
 
     for (const [modeKey, rawValue] of Object.entries(update.valuesByMode)) {
-      // modeKey can be a modeId directly or "default" (use first mode)
-      let modeId = modeKey;
-      if (modeKey === "default" || !collection.modes.some((m) => m.modeId === modeKey)) {
+      // modeKey can be "default", a modeId, or a mode name
+      let modeId: string | undefined;
+      if (modeKey === "default") {
         modeId = collection.modes[0]?.modeId;
+      } else {
+        const byId = collection.modes.find((m) => m.modeId === modeKey);
+        const byName = collection.modes.find((m) => m.name === modeKey);
+        modeId = byId?.modeId ?? byName?.modeId;
       }
       if (!modeId) continue;
 

@@ -194,6 +194,47 @@ export function parseCSSTokenFile(css: string): ParsedTokens {
 
   const textStyles = groupTextStyleTokens(textTokens);
 
+  // Parse mode-specific blocks: [data-mode="<name>"] { ... }
+  const modeBlockRegex = /\[data-mode="([^"]+)"\]\s*\{([\s\S]*?)\}/g;
+  let modeMatch;
+  while ((modeMatch = modeBlockRegex.exec(css))) {
+    const modeName = modeMatch[1];
+    const modeContent = modeMatch[2];
+    const modeLines = modeContent.split("\n");
+    let modeSection = "";
+
+    for (const line of modeLines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("/* === ")) {
+        if (trimmed.includes("Collection:")) modeSection = "variables";
+        else modeSection = "";
+        continue;
+      }
+      if (!trimmed || trimmed.startsWith("/*")) continue;
+
+      const propMatch = trimmed.match(/^(--[\w-]+)\s*:\s*(.+?);?\s*$/);
+      if (!propMatch) continue;
+      const [, propName, propValue] = propMatch;
+
+      if (modeSection === "variables") {
+        const figmaName = cssNameToFigmaName(propName);
+        const resolvedType = inferVariableType(propValue);
+        const value = cssValueToVariableValue(propValue, resolvedType);
+
+        const existing = variables.find((v) => v.name === figmaName);
+        if (existing) {
+          existing.valuesByMode[modeName] = value;
+        } else {
+          variables.push({
+            name: figmaName,
+            resolvedType,
+            valuesByMode: { [modeName]: value },
+          });
+        }
+      }
+    }
+  }
+
   return { variables, paintStyles, textStyles, effectStyles };
 }
 

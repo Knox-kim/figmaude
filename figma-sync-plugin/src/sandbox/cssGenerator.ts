@@ -1,5 +1,10 @@
 import type { RawVariableData, RawStyleData } from "./hash";
 
+export interface ModeInfo {
+  modeMap: Map<string, string>;       // modeId → modeName
+  defaultModes: Map<string, string>;  // collectionName → defaultModeId
+}
+
 function toKebab(name: string): string {
   return name.replace(/\//g, "-").replace(/\s+/g, "-").toLowerCase();
 }
@@ -31,7 +36,11 @@ function formatVariableValue(resolvedType: string, rawValue: string): string {
   }
 }
 
-export function generateCSS(variables: RawVariableData[], styles: RawStyleData[]): string {
+export function generateCSS(
+  variables: RawVariableData[],
+  styles: RawStyleData[],
+  modeInfo?: ModeInfo
+): string {
   const lines: string[] = [":root {"];
 
   // Group variables by collection
@@ -42,14 +51,41 @@ export function generateCSS(variables: RawVariableData[], styles: RawStyleData[]
     collections.set(v.collectionName, group);
   }
 
+  // Collect non-default mode entries: modeName → Array<{cssName, cssValue, collectionName}>
+  const modeBlocks = new Map<string, Array<{ cssName: string; cssValue: string; collectionName: string }>>();
+
   for (const [collectionName, vars] of collections) {
     lines.push(`  /* === Collection: ${collectionName} === */`);
     const sorted = [...vars].sort((a, b) => a.name.localeCompare(b.name));
+
+    // Determine default mode ID for this collection
+    const defaultModeId = modeInfo?.defaultModes.get(collectionName);
+
     for (const v of sorted) {
       const modeEntries = Object.entries(v.valuesByMode);
-      const defaultValue = modeEntries[0]?.[1] ?? "";
+
+      // Pick default value: use defaultModeId if available, else first entry
+      let defaultValue: string;
+      if (defaultModeId && v.valuesByMode[defaultModeId] !== undefined) {
+        defaultValue = v.valuesByMode[defaultModeId];
+      } else {
+        defaultValue = modeEntries[0]?.[1] ?? "";
+      }
       const cssValue = formatVariableValue(v.resolvedType, defaultValue as string);
       lines.push(`  --${toKebab(v.name)}: ${cssValue};`);
+
+      // Collect non-default mode values
+      if (modeInfo) {
+        for (const [modeId, rawValue] of modeEntries) {
+          if (modeId === defaultModeId) continue;
+          const modeName = modeInfo.modeMap.get(modeId);
+          if (!modeName) continue;
+          const modeCssValue = formatVariableValue(v.resolvedType, rawValue as string);
+          const entries = modeBlocks.get(modeName) ?? [];
+          entries.push({ cssName: `--${toKebab(v.name)}`, cssValue: modeCssValue, collectionName });
+          modeBlocks.set(modeName, entries);
+        }
+      }
     }
     lines.push("");
   }
@@ -121,5 +157,30 @@ export function generateCSS(variables: RawVariableData[], styles: RawStyleData[]
   }
 
   lines.push("}");
+
+  // Output non-default mode blocks
+  for (const [modeName, entries] of modeBlocks) {
+    lines.push("");
+    lines.push(`[data-mode="${modeName}"] {`);
+
+    // Group entries by collection for section comments
+    const byCollection = new Map<string, Array<{ cssName: string; cssValue: string }>>();
+    for (const e of entries) {
+      const group = byCollection.get(e.collectionName) ?? [];
+      group.push({ cssName: e.cssName, cssValue: e.cssValue });
+      byCollection.set(e.collectionName, group);
+    }
+
+    for (const [collectionName, vars] of byCollection) {
+      lines.push(`  /* === Collection: ${collectionName} === */`);
+      for (const v of vars) {
+        lines.push(`  ${v.cssName}: ${v.cssValue};`);
+      }
+      lines.push("");
+    }
+
+    lines.push("}");
+  }
+
   return lines.join("\n");
 }

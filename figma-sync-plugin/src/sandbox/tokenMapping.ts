@@ -73,6 +73,24 @@ export async function scanStyles(): Promise<RawStyleData[]> {
   return styles;
 }
 
+// --- Mode info helper ---
+
+export async function getModeInfo(): Promise<{
+  modeMap: Array<[string, string]>;
+  defaultModes: Array<[string, string]>;
+}> {
+  const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  const modeMap: Array<[string, string]> = [];
+  const defaultModes: Array<[string, string]> = [];
+  for (const c of collections) {
+    defaultModes.push([c.name, c.defaultModeId]);
+    for (const m of c.modes) {
+      modeMap.push([m.modeId, m.name]);
+    }
+  }
+  return { modeMap, defaultModes };
+}
+
 // --- Snapshot helpers ---
 
 function toVariableSnapshot(rawVars: RawVariableData[]): TokenSnapshot {
