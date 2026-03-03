@@ -69,7 +69,13 @@ export function useSync(config: GlobalConfig) {
       }
 
       // --- Fetch code hashes for all mapped files ---
-      const paths = rawMappings.map((m) => m.linkedFile);
+      // Components track the JSON descriptor file; tokens track the CSS file.
+      const hashPathFor = (m: MappingEntry) =>
+        m.kind === "component"
+          ? `.figma/components/${m.componentName}.json`
+          : m.linkedFile;
+
+      const paths = rawMappings.map(hashPathFor);
       const { shas, errors } = await getFileShas(config.repoOwner, config.repoName, paths, config.branch);
 
       if (errors.size > 0) {
@@ -78,23 +84,23 @@ export function useSync(config: GlobalConfig) {
       }
 
       for (const m of rawMappings) {
-        const sha = shas.get(m.linkedFile) ?? "";
+        const p = hashPathFor(m);
+        const sha = shas.get(p) ?? "";
         if (m.codeHash === "" && sha !== "") {
           m.codeHash = sha;
           requestToPlugin("UPDATE_CODE_HASH", { nodeId: m.nodeId, codeHash: sha });
         }
       }
 
-      const withState: MappingWithState[] = rawMappings.map((m) => ({
-        ...m,
-        currentCodeHash: shas.get(m.linkedFile) ?? "",
-        currentSnapshot: currentSnapshots[m.nodeId],
-        state: computeState(
-          m,
-          shas.get(m.linkedFile) ?? "",
-          errors.has(m.linkedFile)
-        ),
-      }));
+      const withState: MappingWithState[] = rawMappings.map((m) => {
+        const p = hashPathFor(m);
+        return {
+          ...m,
+          currentCodeHash: shas.get(p) ?? "",
+          currentSnapshot: currentSnapshots[m.nodeId],
+          state: computeState(m, shas.get(p) ?? "", errors.has(p)),
+        };
+      });
 
       // --- Token mappings (Variables & Styles) ---
       const tokenFile = config.tokenFile || "src/styles/tokens.css";
