@@ -197,7 +197,10 @@ onRequestFromUI("APPLY_VARIABLE_VALUES", async ({ values }) => {
   let updated = 0;
 
   for (const update of values) {
-    const variable = variables.find((v) => v.name === update.name);
+    // ID-first lookup, name fallback
+    const variable = update.id
+      ? (variables.find((v) => v.id === update.id) ?? variables.find((v) => v.name === update.name))
+      : variables.find((v) => v.name === update.name);
     if (!variable) continue;
 
     const collection = collections.find((c) => c.id === variable.variableCollectionId);
@@ -216,7 +219,13 @@ onRequestFromUI("APPLY_VARIABLE_VALUES", async ({ values }) => {
       if (!modeId) continue;
 
       try {
-        const parsedValue = JSON.parse(rawValue);
+        let parsedValue = JSON.parse(rawValue);
+        // Convert legacy __alias format to proper VariableAlias
+        if (typeof parsedValue === "object" && parsedValue !== null && "__alias" in parsedValue && !("type" in parsedValue)) {
+          const aliasTarget = variables.find((v) => v.name === parsedValue.__alias);
+          if (!aliasTarget) continue;
+          parsedValue = { type: "VARIABLE_ALIAS", id: aliasTarget.id };
+        }
         variable.setValueForMode(modeId, parsedValue);
       } catch {
         // Skip malformed values rather than failing the entire batch
@@ -240,13 +249,17 @@ onRequestFromUI("APPLY_STYLE_VALUES", async ({ values }) => {
 
   for (const update of values) {
     if (update.styleType === "PAINT") {
-      const style = paintStyles.find((s) => s.name === update.name);
+      const style = update.id
+        ? (paintStyles.find((s) => s.id === update.id) ?? paintStyles.find((s) => s.name === update.name))
+        : paintStyles.find((s) => s.name === update.name);
       if (style && update.paints) {
         style.paints = JSON.parse(update.paints);
         updated++;
       }
     } else if (update.styleType === "TEXT") {
-      const style = textStyles.find((s) => s.name === update.name);
+      const style = update.id
+        ? (textStyles.find((s) => s.id === update.id) ?? textStyles.find((s) => s.name === update.name))
+        : textStyles.find((s) => s.name === update.name);
       if (style) {
         if (update.fontFamily || update.fontWeight) {
           await figma.loadFontAsync({
@@ -264,7 +277,9 @@ onRequestFromUI("APPLY_STYLE_VALUES", async ({ values }) => {
         updated++;
       }
     } else if (update.styleType === "EFFECT") {
-      const style = effectStyles.find((s) => s.name === update.name);
+      const style = update.id
+        ? (effectStyles.find((s) => s.id === update.id) ?? effectStyles.find((s) => s.name === update.name))
+        : effectStyles.find((s) => s.name === update.name);
       if (style && update.effects) {
         style.effects = JSON.parse(update.effects);
         updated++;

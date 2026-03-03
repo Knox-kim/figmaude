@@ -74,7 +74,29 @@ export function useSync(config: GlobalConfig) {
       const paths = rawMappings.map((m) => m.linkedFile);
       const { shas, errors } = await getFileShas(config.repoOwner, config.repoName, paths, config.branch);
 
-      if (errors.size > 0) {
+      // Auto-unlink mappings whose code file was deleted/renamed (404 only)
+      // Do NOT unlink on transient errors (rate limit, network, auth)
+      const deletedPaths = new Set<string>();
+      for (const [path, errMsg] of errors.entries()) {
+        if (shas.get(path) === "" && errMsg.includes("404")) {
+          deletedPaths.add(path);
+        }
+      }
+      if (deletedPaths.size > 0) {
+        for (const m of rawMappings) {
+          if (deletedPaths.has(m.linkedFile)) {
+            requestToPlugin("UNLINK_COMPONENT", { nodeId: m.nodeId });
+          }
+        }
+        rawMappings = rawMappings.filter((m) => !deletedPaths.has(m.linkedFile));
+
+        // Report remaining (non-deletion) errors only
+        const remainingErrors = [...errors.entries()].filter(([p]) => !deletedPaths.has(p));
+        if (remainingErrors.length > 0) {
+          const msgs = remainingErrors.map(([p, e]) => `${p}: ${e}`);
+          setError(`GitHub API errors: ${msgs.join(", ")}`);
+        }
+      } else if (errors.size > 0) {
         const msgs = [...errors.entries()].map(([p, e]) => `${p}: ${e}`);
         setError(`GitHub API errors: ${msgs.join(", ")}`);
       }
@@ -98,38 +120,46 @@ export function useSync(config: GlobalConfig) {
       });
 
       // --- Token mappings (Variables & Styles) ---
-      const tokenFile = config.tokenFile || "src/styles/tokens.css";
+      const tokenFile = config.tokenFile || "src/tokens.css";
       {
         const [varsResult, stylesResult] = await Promise.all([
           requestToPlugin("GET_VARIABLES_MAPPING"),
           requestToPlugin("GET_STYLES_MAPPING"),
         ]);
 
-        // Token file SHA (shared by both)
-        let tokenSha = "";
-        let tokenFetchFailed = false;
-        try {
-          const { shas: tokenShas, errors: tokenErrors } = await getFileShas(
-            config.repoOwner, config.repoName, [tokenFile], config.branch
-          );
-          tokenSha = tokenShas.get(tokenFile) ?? "";
-          tokenFetchFailed = tokenErrors.has(tokenFile);
-        } catch {
-          tokenFetchFailed = true;
-        }
-
-        // Auto-link if not yet linked
-        if (!varsResult.mapping) {
+        // Auto-link if not yet linked, or re-link if token file path changed
+        if (!varsResult.mapping || varsResult.mapping.linkedFile !== tokenFile) {
+          if (varsResult.mapping) await requestToPlugin("UNLINK_VARIABLES");
           await requestToPlugin("LINK_VARIABLES", { tokenFile });
           const fresh = await requestToPlugin("GET_VARIABLES_MAPPING");
           varsResult.mapping = fresh.mapping;
           varsResult.currentSnapshot = fresh.currentSnapshot;
         }
-        if (!stylesResult.mapping) {
+        if (!stylesResult.mapping || stylesResult.mapping.linkedFile !== tokenFile) {
+          if (stylesResult.mapping) await requestToPlugin("UNLINK_STYLES");
           await requestToPlugin("LINK_STYLES", { tokenFile });
           const fresh = await requestToPlugin("GET_STYLES_MAPPING");
           stylesResult.mapping = fresh.mapping;
           stylesResult.currentSnapshot = fresh.currentSnapshot;
+        }
+
+        // Use mapping's linkedFile for SHA fetch — Push/Pull use this path,
+        // so state computation must use the same path to stay consistent.
+        const actualTokenFile = varsResult.mapping?.linkedFile
+          || stylesResult.mapping?.linkedFile
+          || tokenFile;
+
+        // Token file SHA (shared by both)
+        let tokenSha = "";
+        let tokenFetchFailed = false;
+        try {
+          const { shas: tokenShas, errors: tokenErrors } = await getFileShas(
+            config.repoOwner, config.repoName, [actualTokenFile], config.branch
+          );
+          tokenSha = tokenShas.get(actualTokenFile) ?? "";
+          tokenFetchFailed = tokenErrors.has(actualTokenFile);
+        } catch {
+          tokenFetchFailed = true;
         }
 
         // Initialize code hash on first run

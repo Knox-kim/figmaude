@@ -20,19 +20,34 @@ export function cssNameToFigmaName(cssName: string, prefix?: string): string {
   return name.replace(/-/g, "/");
 }
 
+// Parse @fid and @alias annotations from a CSS line comment.
+// e.g. "--color-bg: #fff; /* @fid VariableID:1:100 @alias VariableID:1:99 */"
+// Returns { clean: line without the comment, id, aliasId }
+function parseLineAnnotations(line: string): { clean: string; id?: string; aliasId?: string } {
+  const match = line.match(/\/\*\s*@fid\s+(\S+)(?:\s+@alias\s+(\S+))?\s*\*\//);
+  if (!match) return { clean: line };
+  const clean = line.replace(/\s*\/\*\s*@fid\s+[^*]*\*\//, "").trimEnd();
+  return { clean, id: match[1], aliasId: match[2] };
+}
+
 /**
  * Convert a CSS value back to a Figma variable value (JSON-serialized).
  * Handles `var(--name)` alias references by converting back to `{__alias: "figma/name"}`.
+ * When aliasId is provided (from @alias annotation), produces a proper VARIABLE_ALIAS.
  */
 export function cssValueToVariableValue(
   value: string,
-  resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN"
+  resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN",
+  aliasId?: string
 ): string {
   const trimmed = value.trim().replace(/;$/, "");
 
-  // Handle alias references: var(--kebab-name) → { __alias: "figma/name" }
+  // Handle alias references: var(--kebab-name)
   const varMatch = trimmed.match(/^var\(--([^)]+)\)$/);
   if (varMatch) {
+    if (aliasId) {
+      return JSON.stringify({ type: "VARIABLE_ALIAS", id: aliasId });
+    }
     const figmaName = varMatch[1].replace(/-/g, "/");
     return JSON.stringify({ __alias: figmaName });
   }
@@ -82,11 +97,11 @@ function inferVariableType(value: string): "COLOR" | "FLOAT" | "STRING" | "BOOLE
  * e.g. --text-heading-1-size, --text-heading-1-family → one style "heading/1"
  */
 export function groupTextStyleTokens(
-  textTokens: Map<string, string>
+  textTokens: Map<string, { value: string; id?: string }>
 ): ApplyStyleValuesPayload[] {
-  const groups = new Map<string, Record<string, string>>();
+  const groups = new Map<string, { props: Record<string, string>; id?: string }>();
 
-  for (const [prop, value] of textTokens) {
+  for (const [prop, entry] of textTokens) {
     // e.g. "--text-heading-1-size" → suffix = "size", baseName = "heading-1"
     const withoutPrefix = prop.replace(/^--text-/, "");
     const suffixes = ["size", "family", "weight", "line-height", "letter-spacing"];
@@ -100,13 +115,15 @@ export function groupTextStyleTokens(
     if (!matchedSuffix) continue;
 
     const baseName = withoutPrefix.slice(0, -(matchedSuffix.length + 1));
-    const group = groups.get(baseName) ?? {};
-    group[matchedSuffix] = value.trim().replace(/;$/, "");
+    const group = groups.get(baseName) ?? { props: {} };
+    group.props[matchedSuffix] = entry.value.trim().replace(/;$/, "");
+    if (!group.id && entry.id) group.id = entry.id;
     groups.set(baseName, group);
   }
 
-  return [...groups.entries()].map(([baseName, props]) => {
+  return [...groups.entries()].map(([baseName, { props, id }]) => {
     const payload: ApplyStyleValuesPayload = {
+      id,
       name: baseName.replace(/-/g, "/"),
       styleType: "TEXT",
     };
@@ -152,7 +169,7 @@ export function parseCSSTokenFile(css: string): ParsedTokens {
 
   const variables: ApplyVariableValuesPayload[] = [];
   const paintStyles: ApplyStyleValuesPayload[] = [];
-  const textTokens = new Map<string, string>();
+  const textTokens = new Map<string, { value: string; id?: string }>();
   const effectStyles: ApplyStyleValuesPayload[] = [];
 
   // Extract content inside :root { ... }
@@ -177,8 +194,11 @@ export function parseCSSTokenFile(css: string): ParsedTokens {
     // Skip comments and empty lines
     if (!trimmed || trimmed.startsWith("/*")) continue;
 
+    // Extract @fid/@alias annotations before parsing the property
+    const { clean, id, aliasId } = parseLineAnnotations(trimmed);
+
     // Parse CSS custom property
-    const propMatch = trimmed.match(/^(--[\w-]+)\s*:\s*(.+?);?\s*$/);
+    const propMatch = clean.match(/^(--[\w-]+)\s*:\s*(.+?);?\s*$/);
     if (!propMatch) continue;
 
     const [, propName, propValue] = propMatch;
@@ -186,28 +206,32 @@ export function parseCSSTokenFile(css: string): ParsedTokens {
     if (currentSection === "variables") {
       const resolvedType = inferVariableType(propValue);
       variables.push({
+        id,
         name: cssNameToFigmaName(propName),
         resolvedType,
-        valuesByMode: { default: cssValueToVariableValue(propValue, resolvedType) },
+        valuesByMode: { default: cssValueToVariableValue(propValue, resolvedType, aliasId) },
       });
     } else if (currentSection === "paint" && propName.startsWith("--paint-")) {
       const { a, ...rgb } = hexToRgba(propValue.trim());
       paintStyles.push({
+        id,
         name: cssNameToFigmaName(propName, "paint"),
         styleType: "PAINT",
         paints: JSON.stringify([{ type: "SOLID", color: rgb, opacity: a, visible: true }]),
       });
     } else if (currentSection === "text" && propName.startsWith("--text-")) {
-      textTokens.set(propName, propValue);
+      textTokens.set(propName, { value: propValue, id });
     } else if (currentSection === "effect") {
       if (propName.startsWith("--shadow-")) {
         effectStyles.push({
+          id,
           name: cssNameToFigmaName(propName, "shadow"),
           styleType: "EFFECT",
           effects: parseShadowValue(propName, propValue),
         });
       } else if (propName.startsWith("--bg-blur-")) {
         effectStyles.push({
+          id,
           name: cssNameToFigmaName(propName, "bg-blur"),
           styleType: "EFFECT",
           effects: JSON.stringify([{
@@ -218,6 +242,7 @@ export function parseCSSTokenFile(css: string): ParsedTokens {
         });
       } else if (propName.startsWith("--blur-")) {
         effectStyles.push({
+          id,
           name: cssNameToFigmaName(propName, "blur"),
           styleType: "EFFECT",
           effects: JSON.stringify([{
@@ -250,20 +275,23 @@ export function parseCSSTokenFile(css: string): ParsedTokens {
       }
       if (!trimmed || trimmed.startsWith("/*")) continue;
 
-      const propMatch = trimmed.match(/^(--[\w-]+)\s*:\s*(.+?);?\s*$/);
+      const { clean, id, aliasId } = parseLineAnnotations(trimmed);
+      const propMatch = clean.match(/^(--[\w-]+)\s*:\s*(.+?);?\s*$/);
       if (!propMatch) continue;
       const [, propName, propValue] = propMatch;
 
       if (modeSection === "variables") {
         const figmaName = cssNameToFigmaName(propName);
         const resolvedType = inferVariableType(propValue);
-        const value = cssValueToVariableValue(propValue, resolvedType);
+        const value = cssValueToVariableValue(propValue, resolvedType, aliasId);
 
         const existing = variables.find((v) => v.name === figmaName);
         if (existing) {
           existing.valuesByMode[modeName] = value;
+          if (!existing.id && id) existing.id = id;
         } else {
           variables.push({
+            id,
             name: figmaName,
             resolvedType,
             valuesByMode: { [modeName]: value },

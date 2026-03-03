@@ -20,7 +20,7 @@ export default function SettingsView({ config, token, onSave, onBack }: Settings
   const [styling, setStyling] = useState<GlobalConfig["styling"]>(
     config?.styling ?? "tailwind"
   );
-  const [tokenFile, setTokenFile] = useState(config?.tokenFile ?? "src/styles/tokens.css");
+  const [tokenFile, setTokenFile] = useState(config?.tokenFile ?? "src/tokens.css");
   const [tokenInput, setTokenInput] = useState(token ?? "");
   const [error, setError] = useState<string | null>(null);
 
@@ -103,7 +103,7 @@ export default function SettingsView({ config, token, onSave, onBack }: Settings
           type="text"
           value={tokenFile}
           onChange={(e) => setTokenFile(e.target.value)}
-          placeholder="src/styles/tokens.css"
+          placeholder="src/tokens.css"
           className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
         />
         <span className="block text-xs text-gray-400 mt-1">CSS file for design tokens (variables & styles)</span>

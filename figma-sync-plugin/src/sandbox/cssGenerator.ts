@@ -23,6 +23,20 @@ function rgbaToHex(value: unknown): string {
   return String(value);
 }
 
+function extractAliasId(rawValue: string): string | null {
+  try {
+    const v = JSON.parse(rawValue);
+    return v?.__aliasId ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function idComment(id: string, aliasId?: string | null): string {
+  const alias = aliasId ? ` @alias ${aliasId}` : "";
+  return ` /* @fid ${id}${alias} */`;
+}
+
 function formatVariableValue(resolvedType: string, rawValue: string): string {
   try {
     const value = JSON.parse(rawValue);
@@ -57,8 +71,8 @@ export function generateCSS(
     collections.set(v.collectionName, group);
   }
 
-  // Collect non-default mode entries: modeName → Array<{cssName, cssValue, collectionName}>
-  const modeBlocks = new Map<string, Array<{ cssName: string; cssValue: string; collectionName: string }>>();
+  // Collect non-default mode entries: modeName → Array<{cssName, cssValue, collectionName, id, aliasId?}>
+  const modeBlocks = new Map<string, Array<{ cssName: string; cssValue: string; collectionName: string; id: string; aliasId: string | null }>>();
 
   for (const [collectionName, vars] of collections) {
     lines.push(`  /* === Collection: ${collectionName} === */`);
@@ -78,7 +92,8 @@ export function generateCSS(
         defaultValue = modeEntries[0]?.[1] ?? "";
       }
       const cssValue = formatVariableValue(v.resolvedType, defaultValue as string);
-      lines.push(`  --${toKebab(v.name)}: ${cssValue};`);
+      const comment = idComment(v.id, extractAliasId(defaultValue as string));
+      lines.push(`  --${toKebab(v.name)}: ${cssValue};${comment}`);
 
       // Collect non-default mode values
       if (modeInfo) {
@@ -88,7 +103,7 @@ export function generateCSS(
           if (!modeName) continue;
           const modeCssValue = formatVariableValue(v.resolvedType, rawValue as string);
           const entries = modeBlocks.get(modeName) ?? [];
-          entries.push({ cssName: `--${toKebab(v.name)}`, cssValue: modeCssValue, collectionName });
+          entries.push({ cssName: `--${toKebab(v.name)}`, cssValue: modeCssValue, collectionName, id: v.id, aliasId: extractAliasId(rawValue as string) });
           modeBlocks.set(modeName, entries);
         }
       }
@@ -109,7 +124,7 @@ export function generateCSS(
           const paints = JSON.parse(s.paints);
           const first = paints[0];
           if (first?.type === "SOLID" && first.color) {
-            lines.push(`  --paint-${toKebab(s.name)}: ${rgbaToHex(first.color)};`);
+            lines.push(`  --paint-${toKebab(s.name)}: ${rgbaToHex(first.color)};${idComment(s.id)}`);
           }
         } catch {
           lines.push(`  /* --paint-${toKebab(s.name)}: complex paint */`);
@@ -123,24 +138,25 @@ export function generateCSS(
     lines.push("  /* === TextStyles === */");
     for (const s of textStyles.sort((a, b) => a.name.localeCompare(b.name))) {
       const prefix = `--text-${toKebab(s.name)}`;
-      if (s.fontSize != null) lines.push(`  ${prefix}-size: ${s.fontSize}px;`);
-      if (s.fontFamily) lines.push(`  ${prefix}-family: "${s.fontFamily}";`);
-      if (s.fontWeight) lines.push(`  ${prefix}-weight: ${s.fontWeight};`);
+      const comment = idComment(s.id);
+      if (s.fontSize != null) lines.push(`  ${prefix}-size: ${s.fontSize}px;${comment}`);
+      if (s.fontFamily) lines.push(`  ${prefix}-family: "${s.fontFamily}";${comment}`);
+      if (s.fontWeight) lines.push(`  ${prefix}-weight: ${s.fontWeight};${comment}`);
       if (s.lineHeight) {
         try {
           const lh = JSON.parse(s.lineHeight);
-          if (lh.unit === "PIXELS") lines.push(`  ${prefix}-line-height: ${lh.value}px;`);
-          else if (lh.unit === "PERCENT") lines.push(`  ${prefix}-line-height: ${lh.value}%;`);
-          else lines.push(`  ${prefix}-line-height: normal;`);
+          if (lh.unit === "PIXELS") lines.push(`  ${prefix}-line-height: ${lh.value}px;${comment}`);
+          else if (lh.unit === "PERCENT") lines.push(`  ${prefix}-line-height: ${lh.value}%;${comment}`);
+          else lines.push(`  ${prefix}-line-height: normal;${comment}`);
         } catch {
-          lines.push(`  ${prefix}-line-height: normal;`);
+          lines.push(`  ${prefix}-line-height: normal;${comment}`);
         }
       }
       if (s.letterSpacing) {
         try {
           const ls = JSON.parse(s.letterSpacing);
-          if (ls.unit === "PIXELS") lines.push(`  ${prefix}-letter-spacing: ${ls.value}px;`);
-          else if (ls.unit === "PERCENT") lines.push(`  ${prefix}-letter-spacing: ${ls.value}%;`);
+          if (ls.unit === "PIXELS") lines.push(`  ${prefix}-letter-spacing: ${ls.value}px;${comment}`);
+          else if (ls.unit === "PERCENT") lines.push(`  ${prefix}-letter-spacing: ${ls.value}%;${comment}`);
         } catch {
           // skip malformed
         }
@@ -170,12 +186,13 @@ export function generateCSS(
           }
         }
 
+        const comment = idComment(s.id);
         if (shadows.length > 0) {
-          lines.push(`  --shadow-${toKebab(s.name)}: ${shadows.join(", ")};`);
+          lines.push(`  --shadow-${toKebab(s.name)}: ${shadows.join(", ")};${comment}`);
         }
         for (const blur of blurs) {
           const blurPrefix = blur.type === "BACKGROUND_BLUR" ? "bg-blur" : "blur";
-          lines.push(`  --${blurPrefix}-${toKebab(s.name)}: ${blur.radius}px;`);
+          lines.push(`  --${blurPrefix}-${toKebab(s.name)}: ${blur.radius}px;${comment}`);
         }
       } catch {
         lines.push(`  /* --effect-${toKebab(s.name)}: complex effect */`);
@@ -192,17 +209,17 @@ export function generateCSS(
     lines.push(`[data-mode="${modeName}"] {`);
 
     // Group entries by collection for section comments
-    const byCollection = new Map<string, Array<{ cssName: string; cssValue: string }>>();
+    const byCollection = new Map<string, Array<{ cssName: string; cssValue: string; id: string; aliasId: string | null }>>();
     for (const e of entries) {
       const group = byCollection.get(e.collectionName) ?? [];
-      group.push({ cssName: e.cssName, cssValue: e.cssValue });
+      group.push({ cssName: e.cssName, cssValue: e.cssValue, id: e.id, aliasId: e.aliasId });
       byCollection.set(e.collectionName, group);
     }
 
     for (const [collectionName, vars] of byCollection) {
       lines.push(`  /* === Collection: ${collectionName} === */`);
       for (const v of vars) {
-        lines.push(`  ${v.cssName}: ${v.cssValue};`);
+        lines.push(`  ${v.cssName}: ${v.cssValue};${idComment(v.id, v.aliasId)}`);
       }
       lines.push("");
     }

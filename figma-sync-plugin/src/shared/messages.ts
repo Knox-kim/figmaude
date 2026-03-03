@@ -32,12 +32,14 @@ export type PluginRequest =
   | { type: "EXTRACT_COMPONENT_JSON"; nodeId: string };
 
 export interface ApplyVariableValuesPayload {
+  id?: string;  // Figma variable ID for stable lookup
   name: string;
   resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN";
   valuesByMode: Record<string, string>; // modeId/modeName → JSON-serialized value
 }
 
 export interface ApplyStyleValuesPayload {
+  id?: string;  // Figma style ID for stable lookup
   name: string;
   styleType: "PAINT" | "TEXT" | "EFFECT";
   paints?: string;       // JSON-serialized Paint[]

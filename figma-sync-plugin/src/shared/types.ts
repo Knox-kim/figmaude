@@ -3,6 +3,7 @@ export interface MappingEntry {
   nodeId: string;
   linkedFile: string;
   componentName: string;
+  figmaNodeName: string;
   figmaHash: string;
   codeHash: string;
   lastSyncedHash: string;
@@ -164,6 +165,8 @@ export interface ComponentDescriptorVariantOverride {
       textStyles?: Partial<ComponentDescriptorTextStyles>;
       textContent?: string;
     }>;
+    addedChildren?: ComponentDescriptorChild[];
+    removedChildren?: string[];
   };
 }
 

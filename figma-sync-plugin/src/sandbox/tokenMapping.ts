@@ -27,7 +27,7 @@ export async function scanVariables(): Promise<RawVariableData[]> {
         const aliasId = (value as { id: string }).id;
         const aliasName = variableNameById.get(aliasId);
         if (aliasName) {
-          serializedValues[modeId] = JSON.stringify({ __alias: aliasName });
+          serializedValues[modeId] = JSON.stringify({ __alias: aliasName, __aliasId: aliasId });
         } else {
           // Alias target not found locally — serialize raw value as fallback
           serializedValues[modeId] = JSON.stringify(value);
@@ -191,6 +191,7 @@ export async function linkVariables(tokenFile: string): Promise<boolean> {
     nodeId: "__variables__",
     linkedFile: tokenFile,
     componentName: "Variables",
+    figmaNodeName: "",
     figmaHash: hash,
     codeHash: "",
     lastSyncedHash: hash,
@@ -259,6 +260,7 @@ export async function linkStyles(tokenFile: string): Promise<boolean> {
     nodeId: "__styles__",
     linkedFile: tokenFile,
     componentName: "Styles",
+    figmaNodeName: "",
     figmaHash: hash,
     codeHash: "",
     lastSyncedHash: hash,

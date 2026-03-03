@@ -66,6 +66,7 @@ async function initCaches(): Promise<void> {
   const colorVars = await figma.variables.getLocalVariablesAsync("COLOR");
   _varCache = new Map(colorVars.map((v) => [v.name, v]));
 
+  await figma.loadAllPagesAsync();
   const allComponents = figma.root.findAll(
     (n) => n.type === "COMPONENT" || n.type === "COMPONENT_SET",
   ) as SceneNode[];
@@ -529,8 +530,12 @@ async function buildVariantComponent(
   }
 
   // Build children (with optional child overrides)
+  const removedSet = new Set(variantOverride?.overrides.removedChildren ?? []);
   if (json.children) {
     for (const childDef of json.children) {
+      // Skip children removed in this variant
+      if (removedSet.has(childDef.name)) continue;
+
       const childOverride = variantOverride?.overrides.children?.[childDef.name];
 
       // Apply child-level overrides
@@ -548,6 +553,13 @@ async function buildVariantComponent(
       }
 
       await buildChild(mergedChild, comp);
+    }
+  }
+
+  // Build children added only in this variant
+  if (variantOverride?.overrides.addedChildren) {
+    for (const addedChild of variantOverride.overrides.addedChildren) {
+      await buildChild(addedChild, comp);
     }
   }
 

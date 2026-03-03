@@ -464,12 +464,28 @@ async function extractVariants(
 
     // Diff children
     const childDiff = diffChildren(baseChildren, variantChildren);
-    if (childDiff) override.overrides.children = childDiff;
+    if (childDiff) {
+      if (childDiff.modified) override.overrides.children = childDiff.modified;
+      if (childDiff.removedNames) override.overrides.removedChildren = childDiff.removedNames;
 
-    // Only include if there are actual overrides
-    if (Object.keys(override.overrides).length > 0) {
-      overrides.push(override);
+      // Extract full child definitions for children added in this variant
+      if (childDiff.addedNames) {
+        const added: ComponentDescriptorChild[] = [];
+        if ("children" in variant) {
+          for (const child of (variant as FrameNode).children) {
+            if (childDiff.addedNames.includes(child.name)) {
+              const extracted = await extractChild(child);
+              if (extracted) added.push(extracted);
+            }
+          }
+        }
+        if (added.length > 0) override.overrides.addedChildren = added;
+      }
     }
+
+    // Always include — even if no visual overrides, the variant's props
+    // (e.g., Size=lg) define a distinct variant that must exist.
+    overrides.push(override);
   }
 
   return overrides.length > 0 ? overrides : undefined;
@@ -589,24 +605,38 @@ function diffLayout(
   return hasDiff ? diff : undefined;
 }
 
+interface ChildDiffResult {
+  modified?: Record<string, {
+    styles?: Partial<ComponentDescriptorStyles>;
+    textStyles?: Partial<ComponentDescriptorTextStyles>;
+    textContent?: string;
+  }>;
+  addedNames?: string[];
+  removedNames?: string[];
+}
+
 function diffChildren(
   base: Map<string, ChildSnapshot>,
   variant: Map<string, ChildSnapshot>
-): Record<string, {
-  styles?: Partial<ComponentDescriptorStyles>;
-  textStyles?: Partial<ComponentDescriptorTextStyles>;
-  textContent?: string;
-}> | undefined {
-  const result: Record<string, {
+): ChildDiffResult | undefined {
+  const modified: Record<string, {
     styles?: Partial<ComponentDescriptorStyles>;
     textStyles?: Partial<ComponentDescriptorTextStyles>;
     textContent?: string;
   }> = {};
   let hasDiff = false;
 
+  const addedNames: string[] = [];
+  const removedNames: string[] = [];
+
   for (const [name, variantChild] of variant.entries()) {
     const baseChild = base.get(name);
-    if (!baseChild) continue;
+    if (!baseChild) {
+      // Child exists in variant but not in base
+      addedNames.push(name);
+      hasDiff = true;
+      continue;
+    }
 
     const childOverride: {
       styles?: Partial<ComponentDescriptorStyles>;
@@ -635,12 +665,26 @@ function diffChildren(
     }
 
     if (childHasDiff) {
-      result[name] = childOverride;
+      modified[name] = childOverride;
       hasDiff = true;
     }
   }
 
-  return hasDiff ? result : undefined;
+  // Children in base but not in variant
+  for (const name of base.keys()) {
+    if (!variant.has(name)) {
+      removedNames.push(name);
+      hasDiff = true;
+    }
+  }
+
+  if (!hasDiff) return undefined;
+
+  return {
+    modified: Object.keys(modified).length > 0 ? modified : undefined,
+    addedNames: addedNames.length > 0 ? addedNames : undefined,
+    removedNames: removedNames.length > 0 ? removedNames : undefined,
+  };
 }
 
 // --- Main export ---

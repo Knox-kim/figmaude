@@ -70,6 +70,7 @@ export async function linkComponent(
     nodeId,
     linkedFile: codePath,
     componentName,
+    figmaNodeName: node.name,
     figmaHash,
     codeHash: "",
     lastSyncedHash: figmaHash,
@@ -118,6 +119,12 @@ export async function getAllMappings(): Promise<{
     const entry = getNodeMapping(node);
     if (!entry) continue;
     if (!entry.kind) entry.kind = "component";
+
+    // Detect Figma rename: if node name changed since linking, auto-unlink
+    if (entry.figmaNodeName && node.name !== entry.figmaNodeName) {
+      node.setPluginData(MAPPING_KEY, "");
+      continue; // skip — not added to validIds, so mapping list auto-cleans
+    }
 
     const sceneNode = node as SceneNode;
     validIds.push(id);

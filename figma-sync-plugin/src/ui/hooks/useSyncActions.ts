@@ -91,7 +91,6 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
           message: `sync: update design tokens from Figma`,
           sha,
         });
-
         // Update both variable and style hashes since the CSS file contains all tokens
         await requestToPlugin("UPDATE_VARIABLES_HASH");
         await requestToPlugin("UPDATE_VARIABLES_CODE_HASH", { codeHash: result.sha });
