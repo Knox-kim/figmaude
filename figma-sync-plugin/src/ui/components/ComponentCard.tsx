@@ -12,6 +12,7 @@ interface ComponentCardProps {
   onForceSyncCode: () => void;
   onResolveConflict?: () => void;
   syncing: boolean;
+  progressMessage?: string;
 }
 
 export default function ComponentCard({
@@ -24,6 +25,7 @@ export default function ComponentCard({
   onForceSyncCode,
   onResolveConflict,
   syncing,
+  progressMessage,
 }: ComponentCardProps) {
   const pushEnabled = state === "figma_changed" || state === "conflict";
   const pullEnabled = state === "code_changed" || state === "conflict";
@@ -60,10 +62,13 @@ export default function ComponentCard({
           {componentName}
         </div>
         <StatusBadge state={state} />
-        {changeSummary && (
+        {progressMessage && (
+          <div className="text-xs text-blue-500 mt-1 animate-pulse">{progressMessage}</div>
+        )}
+        {changeSummary && !progressMessage && (
           <div className="text-xs text-amber-600 mt-1">{changeSummary}</div>
         )}
-        {state === "conflict" && onResolveConflict && (
+        {state === "conflict" && onResolveConflict && !progressMessage && (
           <button
             onClick={onResolveConflict}
             className="text-xs text-red-500 hover:text-red-700 mt-1 block mx-auto"

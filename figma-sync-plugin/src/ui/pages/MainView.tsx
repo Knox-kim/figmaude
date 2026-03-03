@@ -80,7 +80,6 @@ export default function MainView({ config, onSettings, onConflict }: MainViewPro
                 progressMessage={progress?.nodeId === m.nodeId ? progress.message : undefined}
                 onForceSyncFigma={() => handleForceSyncFigma(m)}
                 onForceSyncCode={() => handleForceSyncCode(m)}
-                onCopyContext={undefined}
                 onResolveConflict={() => onConflict(m.nodeId)}
               />
             ))}

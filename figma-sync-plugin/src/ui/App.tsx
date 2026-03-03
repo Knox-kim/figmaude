@@ -129,7 +129,6 @@ function ConflictPage({
       }}
       onBack={onBack}
       syncing={syncingId === conflictNodeId}
-      isComponent={(mapping.kind ?? "component") === "component"}
     />
   );
 }

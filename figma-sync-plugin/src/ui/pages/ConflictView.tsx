@@ -90,7 +90,7 @@ export default function ConflictView({
           {syncing ? "Syncing..." : "Keep Code"}
         </button>
         <p className="text-xs text-gray-400 text-center">
-          Use Claude Code with Figma MCP to merge both sides.
+          Choose which side to keep. The other side will be overwritten.
         </p>
       </div>
     </div>
