@@ -1,122 +1,111 @@
 import { useState } from "react";
-import RepoExplorer from "../components/RepoExplorer";
+import { requestToPlugin } from "../lib/messenger";
+import { listAllFiles } from "../lib/github";
 
 interface LinkViewProps {
-  selectedNodeId: string | null;
-  selectedNodeName: string | null;
   basePath: string;
   repoOwner: string;
   repoName: string;
   branch: string;
-  onLink: (nodeId: string, codePath: string, componentName: string) => Promise<void>;
+  onDone: (linkedCount: number) => void;
   onCancel: () => void;
 }
 
 export default function LinkView({
-  selectedNodeId,
-  selectedNodeName,
   basePath,
   repoOwner,
   repoName,
   branch,
-  onLink,
+  onDone,
   onCancel,
 }: LinkViewProps) {
-  const suggestedName = selectedNodeName ?? "";
-  const [componentName, setComponentName] = useState(suggestedName);
-  const [filePath, setFilePath] = useState(
-    suggestedName ? `${basePath}/${suggestedName}.tsx` : ""
-  );
+  const [directory, setDirectory] = useState(basePath);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showExplorer, setShowExplorer] = useState(false);
+  const [result, setResult] = useState<{ linked: number; scanned: number } | null>(null);
 
-  async function handleLink() {
-    if (!selectedNodeId) {
-      setError("Select a component in Figma first");
-      return;
-    }
-    if (!filePath.trim()) {
-      setError("File path is required");
-      return;
-    }
-    if (!componentName.trim()) {
-      setError("Component name is required");
+  async function handleScan() {
+    if (!directory.trim()) {
+      setError("Directory path is required");
       return;
     }
     setError(null);
     setLoading(true);
+    setResult(null);
+
     try {
-      await onLink(selectedNodeId, filePath.trim(), componentName.trim());
+      const [{ components: unlinked }, fileIndex] = await Promise.all([
+        requestToPlugin("SCAN_COMPONENTS"),
+        listAllFiles(repoOwner, repoName, branch, directory.trim()),
+      ]);
+
+      let linked = 0;
+      for (const comp of unlinked) {
+        const nameParts = comp.name.split("/");
+        const leafName = nameParts[nameParts.length - 1].toLowerCase();
+        const matchPath = fileIndex.get(leafName);
+        if (matchPath) {
+          const { success } = await requestToPlugin("LINK_COMPONENT", {
+            nodeId: comp.nodeId,
+            codePath: matchPath,
+          });
+          if (success) linked++;
+        }
+      }
+
+      setResult({ linked, scanned: unlinked.length });
+
+      if (linked > 0) {
+        // Brief delay so user can see the result before navigating
+        setTimeout(() => onDone(linked), 1200);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to link component");
+      setError(err instanceof Error ? err.message : "Failed to scan");
+    } finally {
       setLoading(false);
     }
   }
 
   return (
     <div className="p-4">
-      <h2 className="text-base font-semibold mb-4">Link Component</h2>
+      <h2 className="text-base font-semibold mb-2">Auto-Link Components</h2>
+      <p className="text-xs text-gray-500 mb-4">
+        Scans unlinked Figma components and matches them to code files by name.
+      </p>
 
       {error && (
         <div className="mb-3 rounded bg-red-50 p-2 text-xs text-red-600">{error}</div>
       )}
 
-      <div className="mb-3 rounded bg-gray-50 p-2">
-        <span className="block text-xs text-gray-500">Figma Component</span>
-        <span className="text-sm font-medium">
-          {selectedNodeName ?? "No component selected"}
-        </span>
-        {selectedNodeId && (
-          <span className="block text-xs text-gray-400 font-mono">{selectedNodeId}</span>
-        )}
-      </div>
-
-      <label className="block mb-3">
-        <span className="block text-xs font-medium text-gray-700 mb-1">Component Name</span>
-        <input
-          type="text"
-          value={componentName}
-          onChange={(e) => setComponentName(e.target.value)}
-          placeholder="compCard"
-          className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-        />
-      </label>
-
-      <label className="block mb-1">
-        <span className="block text-xs font-medium text-gray-700 mb-1">Code File Path</span>
-        <input
-          type="text"
-          value={filePath}
-          onChange={(e) => setFilePath(e.target.value)}
-          placeholder="src/components/compCard.tsx"
-          className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm font-mono"
-        />
-      </label>
-
-      <button
-        type="button"
-        onClick={() => setShowExplorer(!showExplorer)}
-        className="text-xs text-blue-600 hover:text-blue-800 mb-1"
-      >
-        {showExplorer ? "Hide browser" : "Browse repo..."}
-      </button>
-
-      {showExplorer && (
-        <RepoExplorer
-          owner={repoOwner}
-          repo={repoName}
-          branch={branch}
-          basePath={basePath}
-          onSelect={(path) => {
-            setFilePath(path);
-            setShowExplorer(false);
-          }}
-          onClose={() => setShowExplorer(false)}
-        />
+      {result && (
+        <div
+          className={`mb-3 rounded p-2 text-xs ${
+            result.linked > 0
+              ? "bg-green-50 text-green-700"
+              : "bg-yellow-50 text-yellow-700"
+          }`}
+        >
+          {result.linked > 0
+            ? `${result.linked} of ${result.scanned} unlinked component${result.scanned > 1 ? "s" : ""} matched and linked.`
+            : `No matches found among ${result.scanned} unlinked component${result.scanned > 1 ? "s" : ""}.`}
+        </div>
       )}
 
-      <div className="mb-4" />
+      <label className="block mb-4">
+        <span className="block text-xs font-medium text-gray-700 mb-1">
+          Component Directory
+        </span>
+        <input
+          type="text"
+          value={directory}
+          onChange={(e) => setDirectory(e.target.value)}
+          placeholder="src/components"
+          className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm font-mono"
+        />
+        <span className="block text-xs text-gray-400 mt-1">
+          Files under this path with matching names will be linked automatically.
+        </span>
+      </label>
 
       <div className="flex gap-2">
         <button
@@ -126,11 +115,11 @@ export default function LinkView({
           Cancel
         </button>
         <button
-          onClick={handleLink}
-          disabled={!selectedNodeId || loading}
+          onClick={handleScan}
+          disabled={loading}
           className="flex-1 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? "Linking..." : "Link"}
+          {loading ? "Scanning..." : "Scan & Link"}
         </button>
       </div>
     </div>

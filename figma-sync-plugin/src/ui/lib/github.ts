@@ -2,15 +2,18 @@ import { getToken } from "./storage";
 
 const API_BASE = "https://api.github.com";
 
-async function githubFetch<T>(path: string): Promise<T> {
+async function githubFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
   if (!token) throw new Error("GitHub token not configured");
 
   const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github.v3+json",
+      ...init?.headers,
     },
+    cache: "no-store",
   });
 
   if (!res.ok) {
@@ -50,18 +53,20 @@ export async function getFileShas(
   repo: string,
   paths: string[],
   branch: string
-): Promise<Map<string, string>> {
-  const results = new Map<string, string>();
+): Promise<{ shas: Map<string, string>; errors: Map<string, string> }> {
+  const shas = new Map<string, string>();
+  const errors = new Map<string, string>();
   const promises = paths.map(async (path) => {
     try {
       const sha = await getFileSha(owner, repo, path, branch);
-      results.set(path, sha);
-    } catch {
-      results.set(path, "");
+      shas.set(path, sha);
+    } catch (err) {
+      shas.set(path, "");
+      errors.set(path, err instanceof Error ? err.message : "Unknown error");
     }
   });
   await Promise.all(promises);
-  return results;
+  return { shas, errors };
 }
 
 interface GitHubRepoResponse {
@@ -91,6 +96,112 @@ export async function listDirectory(
     if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
     return a.name.localeCompare(b.name);
   });
+}
+
+interface GitHubTreeEntry {
+  path: string;
+  mode: string;
+  type: "blob" | "tree";
+  sha: string;
+}
+
+interface GitHubTreeResponse {
+  sha: string;
+  tree: GitHubTreeEntry[];
+  truncated: boolean;
+}
+
+const COMPONENT_EXTENSIONS = new Set([".tsx", ".vue", ".jsx", ".svelte"]);
+
+/**
+ * List all component files under basePath using the Git Trees API.
+ * Returns a Map<lowercased_filename_without_ext, full_path>.
+ * Files with ambiguous names (same name in multiple dirs) are excluded.
+ */
+export async function listAllFiles(
+  owner: string,
+  repo: string,
+  branch: string,
+  basePath: string
+): Promise<Map<string, string>> {
+  const normalizedBase = basePath.replace(/\/+$/, ""); // strip trailing slashes
+  const data = await githubFetch<GitHubTreeResponse>(
+    `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`
+  );
+
+  const seen = new Map<string, string>();     // lowered name → full path
+  const ambiguous = new Set<string>();         // names that appear in multiple dirs
+
+  for (const entry of data.tree) {
+    if (entry.type !== "blob") continue;
+    if (normalizedBase && !entry.path.startsWith(normalizedBase + "/") && entry.path !== normalizedBase) continue;
+
+    const ext = entry.path.substring(entry.path.lastIndexOf("."));
+    if (!COMPONENT_EXTENSIONS.has(ext)) continue;
+
+    const filename = entry.path.split("/").pop() ?? "";
+    const nameKey = filename.replace(/\.\w+$/, "").toLowerCase();
+
+    if (ambiguous.has(nameKey)) continue;
+    if (seen.has(nameKey)) {
+      // Duplicate — mark ambiguous and remove
+      ambiguous.add(nameKey);
+      seen.delete(nameKey);
+    } else {
+      seen.set(nameKey, entry.path);
+    }
+  }
+
+  return seen;
+}
+
+export async function getFileContent(
+  owner: string,
+  repo: string,
+  path: string,
+  branch: string
+): Promise<{ content: string; sha: string }> {
+  const encodedPath = encodePathSegments(path);
+  const data = await githubFetch<GitHubFileResponse>(
+    `/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(branch)}`
+  );
+  const binary = atob(data.content.replace(/\n/g, ""));
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  const content = new TextDecoder().decode(bytes);
+  return { content, sha: data.sha };
+}
+
+export async function updateFile(params: {
+  owner: string;
+  repo: string;
+  path: string;
+  branch: string;
+  content: string;
+  message: string;
+  sha?: string;
+}): Promise<{ sha: string }> {
+  const { owner, repo, path, branch, content, message, sha } = params;
+  const encodedPath = encodePathSegments(path);
+  const bytes = new TextEncoder().encode(content);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  const base64 = btoa(binary);
+  const body: Record<string, string> = {
+    message,
+    content: base64,
+    branch,
+  };
+  if (sha) body.sha = sha;
+
+  const data = await githubFetch<{ content: { sha: string } }>(
+    `/repos/${owner}/${repo}/contents/${encodedPath}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }
+  );
+  return { sha: data.content.sha };
 }
 
 export async function verifyRepo(
