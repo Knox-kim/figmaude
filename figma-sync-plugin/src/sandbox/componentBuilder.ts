@@ -54,18 +54,41 @@ function fontWeightToStyle(weight: number): string {
 const DEFAULT_FONT: FontName = { family: "Inter", style: "Regular" };
 
 // ---------------------------------------------------------------------------
+// Lookup caches — populated once per applyComponentJSON call, cleared after.
+// Avoids repeated figma.variables.getLocalVariablesAsync and figma.root.findAll
+// calls which are expensive when invoked per-fill or per-instance.
+// ---------------------------------------------------------------------------
+
+let _varCache: Map<string, Variable> | null = null;
+let _compCache: Map<string, SceneNode> | null = null;
+
+async function initCaches(): Promise<void> {
+  const colorVars = await figma.variables.getLocalVariablesAsync("COLOR");
+  _varCache = new Map(colorVars.map((v) => [v.name, v]));
+
+  const allComponents = figma.root.findAll(
+    (n) => n.type === "COMPONENT" || n.type === "COMPONENT_SET",
+  ) as SceneNode[];
+  _compCache = new Map(allComponents.map((n) => [n.name, n]));
+}
+
+function clearCaches(): void {
+  _varCache = null;
+  _compCache = null;
+}
+
+// ---------------------------------------------------------------------------
 // Apply fills / strokes / effects / cornerRadius / layout / styles
 // ---------------------------------------------------------------------------
 
-async function findVariableByName(name: string): Promise<Variable | null> {
-  const allVars = await figma.variables.getLocalVariablesAsync("COLOR");
-  return allVars.find((v) => v.name === name) ?? null;
+function findVariableByName(name: string): Variable | null {
+  return _varCache?.get(name) ?? null;
 }
 
-async function applyFills(
+function applyFills(
   node: GeometryMixin | MinimalFillsMixin,
   fills: ComponentDescriptorFill[],
-): Promise<void> {
+): void {
   const paints: SolidPaint[] = [];
 
   for (const fill of fills) {
@@ -77,7 +100,7 @@ async function applyFills(
     };
 
     if (fill.boundVariable) {
-      const variable = await findVariableByName(fill.boundVariable);
+      const variable = findVariableByName(fill.boundVariable);
       if (variable) {
         paint = figma.variables.setBoundVariableForPaint(paint, "color", variable);
       }
@@ -89,10 +112,10 @@ async function applyFills(
   node.fills = paints;
 }
 
-async function applyStrokes(
+function applyStrokes(
   node: GeometryMixin | MinimalStrokesMixin,
   strokes: ComponentDescriptorStroke[],
-): Promise<void> {
+): void {
   const paints: SolidPaint[] = [];
   let weight: number | undefined;
 
@@ -105,7 +128,7 @@ async function applyStrokes(
     };
 
     if (stroke.boundVariable) {
-      const variable = await findVariableByName(stroke.boundVariable);
+      const variable = findVariableByName(stroke.boundVariable);
       if (variable) {
         paint = figma.variables.setBoundVariableForPaint(paint, "color", variable);
       }
@@ -204,7 +227,7 @@ function applyLayout(node: FrameNode | ComponentNode, layout: ComponentDescripto
   }
 }
 
-async function applyStyles(node: SceneNode, styles: ComponentDescriptorStyles): Promise<void> {
+function applyStyles(node: SceneNode, styles: ComponentDescriptorStyles): void {
   if (styles.width !== undefined && styles.height !== undefined) {
     (node as FrameNode).resize(styles.width, styles.height);
   } else if (styles.width !== undefined) {
@@ -214,11 +237,11 @@ async function applyStyles(node: SceneNode, styles: ComponentDescriptorStyles): 
   }
 
   if (styles.fills && "fills" in node) {
-    await applyFills(node as GeometryMixin, styles.fills);
+    applyFills(node as GeometryMixin, styles.fills);
   }
 
   if (styles.strokes && "strokes" in node) {
-    await applyStrokes(node as GeometryMixin, styles.strokes);
+    applyStrokes(node as GeometryMixin, styles.strokes);
   }
 
   if (styles.effects && "effects" in node) {
@@ -260,7 +283,7 @@ async function applyTextStyles(node: TextNode, ts: ComponentDescriptorTextStyles
   }
 
   if (ts.fills) {
-    await applyFills(node, ts.fills);
+    applyFills(node, ts.fills);
   }
 }
 
@@ -272,6 +295,8 @@ async function buildChild(
   child: ComponentDescriptorChild,
   parent: ChildrenMixin,
 ): Promise<SceneNode> {
+  let node: SceneNode;
+
   switch (child.type) {
     case "TEXT":
       return await buildTextChild(child, parent);
@@ -280,14 +305,27 @@ async function buildChild(
     case "FRAME":
       return await buildFrameChild(child, parent);
     case "RECTANGLE":
-      return buildRectangleChild(child, parent);
+      node = buildRectangleChild(child, parent);
+      break;
     case "ELLIPSE":
-      return buildEllipseChild(child, parent);
+      node = buildEllipseChild(child, parent);
+      break;
     case "VECTOR":
       // Vector nodes cannot be fully created via Plugin API;
       // create a placeholder rectangle instead.
-      return buildRectangleChild(child, parent);
+      node = buildRectangleChild(child, parent);
+      break;
   }
+
+  // Apply styles for shape nodes (RECTANGLE, ELLIPSE, VECTOR).
+  // TEXT, INSTANCE, and FRAME handle styles internally, but shape builders
+  // are sync and don't apply styles. This ensures nested shapes inside
+  // FRAME children also get their styles applied.
+  if (child.styles) {
+    applyStyles(node, child.styles);
+  }
+
+  return node;
 }
 
 async function buildTextChild(
@@ -315,7 +353,7 @@ async function buildTextChild(
   }
 
   if (child.styles) {
-    await applyStyles(text, child.styles);
+    applyStyles(text, child.styles);
   }
 
   return text;
@@ -326,15 +364,10 @@ async function buildInstanceChild(
   parent: ChildrenMixin,
 ): Promise<SceneNode> {
   if (child.componentRef) {
-    // Search for the referenced component
-    const found = figma.root.findAll(
-      (n) =>
-        (n.type === "COMPONENT" || n.type === "COMPONENT_SET") &&
-        n.name === child.componentRef,
-    );
+    // Look up the referenced component from the pre-built cache
+    const target = _compCache?.get(child.componentRef);
 
-    if (found.length > 0) {
-      const target = found[0];
+    if (target) {
       let comp: ComponentNode;
       if (target.type === "COMPONENT_SET") {
         // Use the default variant
@@ -347,7 +380,7 @@ async function buildInstanceChild(
       parent.appendChild(instance);
 
       if (child.styles) {
-        await applyStyles(instance, child.styles);
+        applyStyles(instance, child.styles);
       }
 
       return instance;
@@ -369,7 +402,7 @@ async function buildInstanceChild(
   placeholder.appendChild(label);
 
   if (child.styles) {
-    await applyStyles(placeholder, child.styles);
+    applyStyles(placeholder, child.styles);
   }
 
   return placeholder;
@@ -388,7 +421,7 @@ async function buildFrameChild(
   }
 
   if (child.styles) {
-    await applyStyles(frame, child.styles);
+    applyStyles(frame, child.styles);
   }
 
   if (child.children) {
@@ -407,11 +440,7 @@ function buildRectangleChild(
   const rect = figma.createRectangle();
   rect.name = child.name;
   parent.appendChild(rect);
-
-  // applyStyles is async but we return sync — caller handles awaiting via
-  // the async wrapper in buildChild. For shapes we can safely apply sync-only
-  // portions and queue the async work.
-  // However, since buildChild is already async, we handle this in the caller.
+  // Styles are applied by the caller (buildChild) after creation.
   return rect;
 }
 
@@ -496,7 +525,7 @@ async function buildVariantComponent(
   // Merge styles
   const styles = mergeStyles(json.styles, variantOverride?.overrides.styles);
   if (styles) {
-    await applyStyles(comp, styles as ComponentDescriptorStyles);
+    applyStyles(comp, styles as ComponentDescriptorStyles);
   }
 
   // Build children (with optional child overrides)
@@ -518,15 +547,7 @@ async function buildVariantComponent(
         }
       }
 
-      const node = await buildChild(mergedChild, comp);
-
-      // Apply styles for RECTANGLE / ELLIPSE (sync creation, async styles)
-      if (
-        (mergedChild.type === "RECTANGLE" || mergedChild.type === "ELLIPSE" || mergedChild.type === "VECTOR") &&
-        mergedChild.styles
-      ) {
-        await applyStyles(node, mergedChild.styles);
-      }
+      await buildChild(mergedChild, comp);
     }
   }
 
@@ -570,19 +591,13 @@ async function buildSingleComponent(json: ComponentDescriptor): Promise<Componen
   }
 
   if (json.styles) {
-    await applyStyles(comp, json.styles);
+    applyStyles(comp, json.styles);
   }
 
   // Build children
   if (json.children) {
     for (const childDef of json.children) {
-      const node = await buildChild(childDef, comp);
-      if (
-        (childDef.type === "RECTANGLE" || childDef.type === "ELLIPSE" || childDef.type === "VECTOR") &&
-        childDef.styles
-      ) {
-        await applyStyles(node, childDef.styles);
-      }
+      await buildChild(childDef, comp);
     }
   }
 
@@ -639,6 +654,15 @@ async function buildComponentSet(json: ComponentDescriptor): Promise<ComponentSe
 // Update existing node (upsert)
 // ---------------------------------------------------------------------------
 
+/**
+ * KNOWN LIMITATION: Currently uses delete-and-rebuild strategy.
+ * This breaks instance relationships -- instances of the old component
+ * will become detached. A future version should update properties/styles
+ * in-place to preserve instance cascading.
+ * TODO: Implement in-place property/style/children diffing.
+ *
+ * @returns The NEW node ID (differs from the input `existing` node's ID).
+ */
 async function updateExistingNode(
   existing: SceneNode,
   json: ComponentDescriptor,
@@ -648,10 +672,10 @@ async function updateExistingNode(
   const y = existing.y;
   const parentNode = existing.parent;
 
-  // Remove old node
+  // Remove old node (this detaches any existing instances)
   existing.remove();
 
-  // Rebuild
+  // Rebuild from scratch
   let newNode: SceneNode;
   if (hasVariantProperties(json)) {
     newNode = await buildComponentSet(json);
@@ -670,6 +694,7 @@ async function updateExistingNode(
     newNode.y = y;
   }
 
+  // NOTE: The returned ID is a new ID, not the original node's ID.
   return newNode.id;
 }
 
@@ -681,31 +706,40 @@ export async function applyComponentJSON(
   nodeId: string,
   json: ComponentDescriptor,
 ): Promise<string> {
-  // 1. Try to find existing node
-  const existing = await figma.getNodeByIdAsync(nodeId);
+  // Pre-populate lookup caches so that variable/component resolution is O(1)
+  // instead of hitting figma.variables.getLocalVariablesAsync / figma.root.findAll
+  // on every fill, stroke, or instance child.
+  await initCaches();
 
-  if (existing && existing.type !== "DOCUMENT" && existing.type !== "PAGE") {
-    return await updateExistingNode(existing as SceneNode, json);
+  try {
+    // 1. Try to find existing node
+    const existing = await figma.getNodeByIdAsync(nodeId);
+
+    if (existing && existing.type !== "DOCUMENT" && existing.type !== "PAGE") {
+      return await updateExistingNode(existing as SceneNode, json);
+    }
+
+    // 2. Create new — position after the last node on the current page
+    const page = figma.currentPage;
+    const children = page.children;
+    let newNode: SceneNode;
+
+    if (hasVariantProperties(json)) {
+      newNode = await buildComponentSet(json);
+    } else {
+      newNode = await buildSingleComponent(json);
+    }
+
+    // Position below the last existing node
+    if (children.length > 1) {
+      // children includes the newly created node, so look at the second-to-last
+      const lastExisting = children[children.length - 2];
+      newNode.x = lastExisting.x;
+      newNode.y = lastExisting.y + lastExisting.height + 100;
+    }
+
+    return newNode.id;
+  } finally {
+    clearCaches();
   }
-
-  // 2. Create new — position after the last node on the current page
-  const page = figma.currentPage;
-  const children = page.children;
-  let newNode: SceneNode;
-
-  if (hasVariantProperties(json)) {
-    newNode = await buildComponentSet(json);
-  } else {
-    newNode = await buildSingleComponent(json);
-  }
-
-  // Position below the last existing node
-  if (children.length > 1) {
-    // children includes the newly created node, so look at the second-to-last
-    const lastExisting = children[children.length - 2];
-    newNode.x = lastExisting.x;
-    newNode.y = lastExisting.y + lastExisting.height + 100;
-  }
-
-  return newNode.id;
 }
