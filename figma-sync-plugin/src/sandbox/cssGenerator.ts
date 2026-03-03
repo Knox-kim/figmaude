@@ -26,6 +26,12 @@ function rgbaToHex(value: unknown): string {
 function formatVariableValue(resolvedType: string, rawValue: string): string {
   try {
     const value = JSON.parse(rawValue);
+
+    // Handle alias references: { __alias: "variable/name" } → var(--variable-name)
+    if (typeof value === "object" && value !== null && "__alias" in value) {
+      return `var(--${toKebab(value.__alias)})`;
+    }
+
     if (resolvedType === "COLOR") return rgbaToHex(value);
     if (resolvedType === "FLOAT") return typeof value === "number" ? `${value}px` : String(value);
     if (resolvedType === "STRING") return `"${value}"`;

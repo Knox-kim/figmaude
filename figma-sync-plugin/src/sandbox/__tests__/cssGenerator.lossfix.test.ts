@@ -1,6 +1,45 @@
 import { describe, it, expect } from "vitest";
 import { generateCSS } from "../cssGenerator";
-import type { RawStyleData } from "../hash";
+import type { RawVariableData, RawStyleData } from "../hash";
+
+describe("generateCSS variable alias", () => {
+  it("outputs var() reference for alias variables", () => {
+    const variables: RawVariableData[] = [
+      {
+        id: "v1", name: "background/brand", resolvedType: "COLOR",
+        collectionName: "ColorSemantic",
+        valuesByMode: {
+          "mode:1": JSON.stringify({ __alias: "grey/950" }),
+        },
+      },
+      {
+        id: "v2", name: "grey/950", resolvedType: "COLOR",
+        collectionName: "ColorPrimitive",
+        valuesByMode: {
+          "mode:1": JSON.stringify({ r: 0.051, g: 0.063, b: 0.094, a: 1 }),
+        },
+      },
+    ];
+    const css = generateCSS(variables, []);
+    expect(css).toContain("--background-brand: var(--grey-950);");
+    expect(css).toContain("--grey-950: #0d1018;");
+  });
+
+  it("does not output [object Object] for alias variables", () => {
+    const variables: RawVariableData[] = [
+      {
+        id: "v1", name: "text/default", resolvedType: "COLOR",
+        collectionName: "ColorSemantic",
+        valuesByMode: {
+          "mode:1": JSON.stringify({ __alias: "grey/100" }),
+        },
+      },
+    ];
+    const css = generateCSS(variables, []);
+    expect(css).not.toContain("[object Object]");
+    expect(css).toContain("var(--grey-100)");
+  });
+});
 
 describe("generateCSS loss fixes", () => {
   describe("letter-spacing", () => {

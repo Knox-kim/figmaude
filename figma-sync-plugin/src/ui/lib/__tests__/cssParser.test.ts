@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseCSSTokenFile, hexToRgba, cssNameToFigmaName } from "../cssParser";
+import { parseCSSTokenFile, hexToRgba, cssNameToFigmaName, cssValueToVariableValue } from "../cssParser";
 
 describe("cssNameToFigmaName", () => {
   it("converts kebab-case to slash-separated", () => {
@@ -20,7 +20,28 @@ describe("hexToRgba", () => {
   });
 });
 
+describe("cssValueToVariableValue alias round-trip", () => {
+  it("converts var(--name) back to __alias JSON", () => {
+    const result = cssValueToVariableValue("var(--grey-950)", "COLOR");
+    expect(JSON.parse(result)).toEqual({ __alias: "grey/950" });
+  });
+
+  it("converts multi-segment var() back to slash-separated alias", () => {
+    const result = cssValueToVariableValue("var(--color-brand-primary)", "COLOR");
+    expect(JSON.parse(result)).toEqual({ __alias: "color/brand/primary" });
+  });
+});
+
 describe("parseCSSTokenFile", () => {
+  it("parses alias variable from :root block", () => {
+    const css = `:root {\n  /* === Collection: ColorSemantic === */\n  --background-brand: var(--grey-950);\n}`;
+    const result = parseCSSTokenFile(css);
+    expect(result.variables).toHaveLength(1);
+    expect(result.variables[0].name).toBe("background/brand");
+    const value = JSON.parse(result.variables[0].valuesByMode.default);
+    expect(value).toEqual({ __alias: "grey/950" });
+  });
+
   it("parses variables from :root block", () => {
     const css = `:root {\n  /* === Collection: Colors === */\n  --color-primary: #6366f1;\n}`;
     const result = parseCSSTokenFile(css);

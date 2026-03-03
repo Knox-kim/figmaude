@@ -11,10 +11,30 @@ export async function scanVariables(): Promise<RawVariableData[]> {
   const collections = await figma.variables.getLocalVariableCollectionsAsync();
   const collectionMap = new Map(collections.map((c) => [c.id, c.name]));
 
+  // Build id→name lookup for resolving aliases
+  const variableNameById = new Map(variables.map((v) => [v.id, v.name]));
+
   return variables.map((v) => {
     const serializedValues: Record<string, string> = {};
     for (const [modeId, value] of Object.entries(v.valuesByMode)) {
-      serializedValues[modeId] = JSON.stringify(value);
+      // Detect VariableAlias: { type: "VARIABLE_ALIAS", id: "VariableID:xxx" }
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        "type" in value &&
+        (value as { type: string }).type === "VARIABLE_ALIAS"
+      ) {
+        const aliasId = (value as { id: string }).id;
+        const aliasName = variableNameById.get(aliasId);
+        if (aliasName) {
+          serializedValues[modeId] = JSON.stringify({ __alias: aliasName });
+        } else {
+          // Alias target not found locally — serialize raw value as fallback
+          serializedValues[modeId] = JSON.stringify(value);
+        }
+      } else {
+        serializedValues[modeId] = JSON.stringify(value);
+      }
     }
 
     return {

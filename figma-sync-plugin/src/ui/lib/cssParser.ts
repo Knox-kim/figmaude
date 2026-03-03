@@ -22,12 +22,20 @@ export function cssNameToFigmaName(cssName: string, prefix?: string): string {
 
 /**
  * Convert a CSS value back to a Figma variable value (JSON-serialized).
+ * Handles `var(--name)` alias references by converting back to `{__alias: "figma/name"}`.
  */
 export function cssValueToVariableValue(
   value: string,
   resolvedType: "COLOR" | "FLOAT" | "STRING" | "BOOLEAN"
 ): string {
   const trimmed = value.trim().replace(/;$/, "");
+
+  // Handle alias references: var(--kebab-name) → { __alias: "figma/name" }
+  const varMatch = trimmed.match(/^var\(--([^)]+)\)$/);
+  if (varMatch) {
+    const figmaName = varMatch[1].replace(/-/g, "/");
+    return JSON.stringify({ __alias: figmaName });
+  }
 
   if (resolvedType === "COLOR") {
     return JSON.stringify(hexToRgba(trimmed));
@@ -62,6 +70,7 @@ export function hexToRgba(hex: string): { r: number; g: number; b: number; a: nu
 
 function inferVariableType(value: string): "COLOR" | "FLOAT" | "STRING" | "BOOLEAN" {
   const trimmed = value.trim().replace(/;$/, "");
+  if (trimmed.startsWith("var(")) return "COLOR"; // alias — type doesn't matter, var() match runs first
   if (trimmed.startsWith("#")) return "COLOR";
   if (trimmed === "true" || trimmed === "false") return "BOOLEAN";
   if (/^-?\d+(\.\d+)?(px|rem|em|%)?$/.test(trimmed)) return "FLOAT";
