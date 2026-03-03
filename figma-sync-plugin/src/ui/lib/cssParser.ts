@@ -128,8 +128,19 @@ export function groupTextStyleTokens(
 
 /**
  * Parse a CSS `:root { ... }` token file and categorize tokens.
+ * Also detects Tailwind config format (JSON) and routes accordingly.
  */
 export function parseCSSTokenFile(css: string): ParsedTokens {
+  // Check if this is a Tailwind config (JSON format)
+  const trimmed = css.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      return parseTailwindConfig(JSON.parse(trimmed));
+    } catch {
+      // Not valid JSON, fall through to CSS parsing
+    }
+  }
+
   const variables: ApplyVariableValuesPayload[] = [];
   const paintStyles: ApplyStyleValuesPayload[] = [];
   const textTokens = new Map<string, string>();
@@ -251,6 +262,90 @@ export function parseCSSTokenFile(css: string): ParsedTokens {
         }
       }
     }
+  }
+
+  return { variables, paintStyles, textStyles, effectStyles };
+}
+
+function parseTailwindConfig(config: Record<string, unknown>): ParsedTokens {
+  const variables: ApplyVariableValuesPayload[] = [];
+  const paintStyles: ApplyStyleValuesPayload[] = [];
+  const textStyles: ApplyStyleValuesPayload[] = [];
+  const effectStyles: ApplyStyleValuesPayload[] = [];
+
+  const theme = config.theme as Record<string, unknown> | undefined;
+  const extend = theme?.extend as Record<string, unknown> ?? {};
+
+  // Colors -> variables (skip CSS variable references)
+  const colors = extend.colors as Record<string, string> ?? {};
+  for (const [key, value] of Object.entries(colors)) {
+    if (typeof value !== "string" || value.startsWith("var(")) continue;
+    variables.push({
+      name: key.replace(/-/g, "/"),
+      resolvedType: "COLOR",
+      valuesByMode: { default: cssValueToVariableValue(value, "COLOR") },
+    });
+  }
+
+  // Spacing -> variables
+  const spacing = extend.spacing as Record<string, string> ?? {};
+  for (const [key, value] of Object.entries(spacing)) {
+    if (typeof value !== "string") continue;
+    variables.push({
+      name: `spacing/${key}`,
+      resolvedType: "FLOAT",
+      valuesByMode: { default: JSON.stringify(parseFloat(value)) },
+    });
+  }
+
+  // fontSize -> text styles
+  const fontSizes = extend.fontSize as Record<string, unknown> ?? {};
+  for (const [key, entry] of Object.entries(fontSizes)) {
+    if (!Array.isArray(entry)) continue;
+    const [size, meta] = entry as [string, Record<string, string>?];
+    const payload: ApplyStyleValuesPayload = {
+      name: key.replace(/-/g, "/"),
+      styleType: "TEXT",
+      fontSize: parseFloat(size),
+    };
+    if (meta?.lineHeight) {
+      if (meta.lineHeight.endsWith("px")) {
+        payload.lineHeight = JSON.stringify({ unit: "PIXELS", value: parseFloat(meta.lineHeight) });
+      } else if (meta.lineHeight.endsWith("%")) {
+        payload.lineHeight = JSON.stringify({ unit: "PERCENT", value: parseFloat(meta.lineHeight) });
+      }
+    }
+    if (meta?.fontWeight) payload.fontWeight = meta.fontWeight;
+    if (meta?.letterSpacing) {
+      if (meta.letterSpacing.endsWith("px")) {
+        payload.letterSpacing = JSON.stringify({ unit: "PIXELS", value: parseFloat(meta.letterSpacing) });
+      } else if (meta.letterSpacing.endsWith("em")) {
+        payload.letterSpacing = JSON.stringify({ unit: "PERCENT", value: parseFloat(meta.letterSpacing) * 100 });
+      }
+    }
+    textStyles.push(payload);
+  }
+
+  // boxShadow -> effect styles
+  const shadows = extend.boxShadow as Record<string, string> ?? {};
+  for (const [key, value] of Object.entries(shadows)) {
+    if (typeof value !== "string") continue;
+    effectStyles.push({
+      name: key.replace(/-/g, "/"),
+      styleType: "EFFECT",
+      effects: parseShadowValue("--shadow-" + key, value),
+    });
+  }
+
+  // blur -> effect styles
+  const blurs = extend.blur as Record<string, string> ?? {};
+  for (const [key, value] of Object.entries(blurs)) {
+    if (typeof value !== "string") continue;
+    effectStyles.push({
+      name: key.replace(/-/g, "/"),
+      styleType: "EFFECT",
+      effects: JSON.stringify([{ type: "LAYER_BLUR", radius: parseFloat(value), visible: true }]),
+    });
   }
 
   return { variables, paintStyles, textStyles, effectStyles };

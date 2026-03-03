@@ -26,6 +26,7 @@ import {
 } from "./tokenMapping";
 import { generateCSS } from "./cssGenerator";
 import type { ModeInfo } from "./cssGenerator";
+import { generateTailwindConfig } from "./tailwindGenerator";
 import { extractComponentJSON } from "./componentExtractor";
 import { applyComponentJSON } from "./componentBuilder";
 
@@ -176,6 +177,11 @@ onRequestFromUI("GENERATE_CSS", async () => {
     modeMap: new Map(modeData.modeMap),
     defaultModes: new Map(modeData.defaultModes),
   };
+
+  const config = getGlobalConfig();
+  if (config?.styling === "tailwind") {
+    return { css: generateTailwindConfig(variables, styles, modeInfo) };
+  }
   return { css: generateCSS(variables, styles, modeInfo) };
 });
 
