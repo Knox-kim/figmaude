@@ -78,8 +78,12 @@ export function useSync(config: GlobalConfig) {
       const paths = rawMappings.map(hashPathFor);
       const { shas, errors } = await getFileShas(config.repoOwner, config.repoName, paths, config.branch);
 
-      if (errors.size > 0) {
-        const msgs = [...errors.entries()].map(([p, e]) => `${p}: ${e}`);
+      // Filter out 404s for component JSON files — they don't exist until first Push to Code
+      const realErrors = [...errors.entries()].filter(
+        ([p, e]) => !(p.startsWith(".figma/components/") && e.includes("404"))
+      );
+      if (realErrors.length > 0) {
+        const msgs = realErrors.map(([p, e]) => `${p}: ${e}`);
         setError(`GitHub API errors: ${msgs.join(", ")}`);
       }
 
@@ -94,11 +98,13 @@ export function useSync(config: GlobalConfig) {
 
       const withState: MappingWithState[] = rawMappings.map((m) => {
         const p = hashPathFor(m);
+        // Component JSON 404 = file not created yet, not a real fetch failure
+        const isJsonNotFound = m.kind === "component" && errors.has(p) && errors.get(p)?.includes("404");
         return {
           ...m,
           currentCodeHash: shas.get(p) ?? "",
           currentSnapshot: currentSnapshots[m.nodeId],
-          state: computeState(m, shas.get(p) ?? "", errors.has(p)),
+          state: computeState(m, shas.get(p) ?? "", errors.has(p) && !isJsonNotFound),
         };
       });
 
