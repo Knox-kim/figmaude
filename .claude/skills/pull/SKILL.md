@@ -1,5 +1,7 @@
 ---
+name: pull
 description: Pull component changes from GitHub and sync to code
+disable-model-invocation: true
 ---
 
 Run `git pull` and then check if any `.figma/components/*.json` files were added or modified.

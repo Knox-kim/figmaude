@@ -60,7 +60,7 @@ export async function linkComponent(
   codePath: string
 ): Promise<boolean> {
   const node = await figma.getNodeByIdAsync(nodeId);
-  if (!node) return false;
+  if (!node || node.removed || !isOnPage(node)) return false;
 
   const componentName = codePath.split("/").pop()?.replace(/\.\w+$/, "") ?? codePath;
   const sceneNode = node as SceneNode;
@@ -73,8 +73,8 @@ export async function linkComponent(
     figmaNodeName: node.name,
     figmaHash,
     codeHash: "",
-    lastSyncedHash: figmaHash,
-    lastSyncedAt: new Date().toISOString(),
+    lastSyncedHash: "",
+    lastSyncedAt: "",
     lastSyncSource: "figma",
     lastSyncedSnapshot: extractFlatSnapshot(sceneNode),
   };
@@ -93,14 +93,37 @@ export async function linkComponent(
 
 export async function unlinkComponent(nodeId: string): Promise<boolean> {
   const node = await figma.getNodeByIdAsync(nodeId);
-  if (!node) return false;
 
-  node.setPluginData(MAPPING_KEY, "");
+  // Clear plugin data if the node still exists
+  if (node && !node.removed) {
+    node.setPluginData(MAPPING_KEY, "");
+  }
 
+  // Always remove from global list (even if node is deleted/removed)
   const ids = getMappingNodeIds().filter((id) => id !== nodeId);
   setMappingNodeIds(ids);
 
   return true;
+}
+
+/** Check if a node is still on a visible page (not in Figma's deleted components pool) */
+export function isOnPage(node: BaseNode): boolean {
+  let current: BaseNode | null = node;
+  while (current) {
+    if (current.type === "PAGE") return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+/** Get the page name a node belongs to */
+function getPageName(node: BaseNode): string | null {
+  let current: BaseNode | null = node;
+  while (current) {
+    if (current.type === "PAGE") return current.name;
+    current = current.parent;
+  }
+  return null;
 }
 
 export async function getAllMappings(): Promise<{
@@ -112,9 +135,12 @@ export async function getAllMappings(): Promise<{
   const currentSnapshots: Record<string, FlatSnapshot> = {};
   const validIds: string[] = [];
 
+  const config = getGlobalConfig();
+  const targetPageName = config?.componentPage;
+
   for (const id of ids) {
     const node = await figma.getNodeByIdAsync(id);
-    if (!node) continue;
+    if (!node || node.removed || !isOnPage(node)) continue;
 
     const entry = getNodeMapping(node);
     if (!entry) continue;
@@ -126,8 +152,15 @@ export async function getAllMappings(): Promise<{
       continue; // skip — not added to validIds, so mapping list auto-cleans
     }
 
-    const sceneNode = node as SceneNode;
+    // Node is valid — keep in global list regardless of page filter
     validIds.push(id);
+
+    // Filter components by target page (but don't remove from global list)
+    if (entry.kind === "component" && targetPageName) {
+      if (getPageName(node) !== targetPageName) continue;
+    }
+
+    const sceneNode = node as SceneNode;
     // Recalculate current figma hash
     entry.figmaHash = computeFigmaHash(sceneNode);
     currentSnapshots[id] = extractFlatSnapshot(sceneNode);
@@ -144,7 +177,7 @@ export async function getAllMappings(): Promise<{
 
 export async function updateCodeHash(nodeId: string, codeHash: string): Promise<boolean> {
   const node = await figma.getNodeByIdAsync(nodeId);
-  if (!node) return false;
+  if (!node || node.removed || !isOnPage(node)) return false;
 
   const entry = getNodeMapping(node);
   if (!entry) return false;
@@ -156,7 +189,7 @@ export async function updateCodeHash(nodeId: string, codeHash: string): Promise<
 
 export async function updateFigmaHash(nodeId: string): Promise<string | null> {
   const node = await figma.getNodeByIdAsync(nodeId);
-  if (!node) return null;
+  if (!node || node.removed || !isOnPage(node)) return null;
 
   const entry = getNodeMapping(node);
   if (!entry) return null;

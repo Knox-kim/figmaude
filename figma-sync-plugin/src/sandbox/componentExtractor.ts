@@ -11,6 +11,7 @@ import type {
   ComponentDescriptorVariantOverride,
 } from "../shared/types";
 import { parseDescription } from "../shared/descriptionParser";
+import { isOnPage } from "./mapping";
 
 // --- Helpers ---
 
@@ -694,7 +695,7 @@ export async function extractComponentJSON(
 ): Promise<ComponentDescriptor> {
   const node = await figma.getNodeByIdAsync(nodeId);
 
-  if (!node) {
+  if (!node || node.removed || !isOnPage(node)) {
     throw new Error(`Node not found: ${nodeId}`);
   }
 

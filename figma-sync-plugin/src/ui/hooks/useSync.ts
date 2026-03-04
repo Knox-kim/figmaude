@@ -8,6 +8,7 @@ export interface MappingWithState extends MappingEntry {
   currentCodeHash: string;
   currentSnapshot?: FlatSnapshot;
   tokenSnapshot?: TokenSnapshot;
+  lastSyncedTokenSnapshot?: TokenSnapshot;
 }
 
 function computeState(
@@ -15,6 +16,9 @@ function computeState(
   currentCodeHash: string,
   fetchFailed: boolean
 ): SyncState {
+  // Never synced before — user must choose which side is the source of truth
+  if (mapping.lastSyncedHash === "" && mapping.lastSyncedAt === "") return "newly_linked";
+
   // If GitHub API failed but we had a stored hash, treat as code_changed
   // so user knows something is off (rather than falsely showing "synced")
   if (fetchFailed && mapping.codeHash !== "") return "code_changed";
@@ -177,6 +181,7 @@ export function useSync(config: GlobalConfig) {
             ...stylesResult.mapping,
             currentCodeHash: tokenSha,
             currentSnapshot: undefined,
+            lastSyncedTokenSnapshot: stylesResult.mapping.tokenSnapshot,
             tokenSnapshot: stylesResult.currentSnapshot ?? undefined,
             state: computeState(stylesResult.mapping, tokenSha, tokenFetchFailed),
           });
@@ -187,6 +192,7 @@ export function useSync(config: GlobalConfig) {
             ...varsResult.mapping,
             currentCodeHash: tokenSha,
             currentSnapshot: undefined,
+            lastSyncedTokenSnapshot: varsResult.mapping.tokenSnapshot,
             tokenSnapshot: varsResult.currentSnapshot ?? undefined,
             state: computeState(varsResult.mapping, tokenSha, tokenFetchFailed),
           });

@@ -63,6 +63,7 @@ export interface GlobalConfig {
   framework: "react" | "vue";
   styling: "tailwind" | "css-modules";
   tokenFile: string;
+  componentPage?: string;
 }
 
 export type SyncState =
@@ -70,6 +71,7 @@ export type SyncState =
   | "figma_changed"
   | "code_changed"
   | "conflict"
+  | "newly_linked"
   | "not_linked";
 
 export interface SyncStatus {

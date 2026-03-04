@@ -10,6 +10,7 @@ import type {
   ComponentDescriptorProperty,
   ComponentDescriptorVariantOverride,
 } from "../shared/types";
+import { isOnPage } from "./mapping";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -649,7 +650,39 @@ async function buildComponentSet(json: ComponentDescriptor): Promise<ComponentSe
     componentSet.description = json.description;
   }
 
-  // 4. Add non-variant properties to the component set
+  // 4. Grid auto layout for organized variant display
+  componentSet.layoutMode = "HORIZONTAL";
+  componentSet.layoutWrap = "WRAP";
+  componentSet.counterAxisSizingMode = "AUTO";
+  componentSet.paddingTop = 40;
+  componentSet.paddingRight = 40;
+  componentSet.paddingBottom = 40;
+  componentSet.paddingLeft = 40;
+  componentSet.itemSpacing = 24;
+  componentSet.counterAxisSpacing = 24;
+  componentSet.cornerRadius = 4;
+  const bg = hexToRgb("00471C");
+  componentSet.fills = [
+    { type: "SOLID", color: { r: bg.r, g: bg.g, b: bg.b }, opacity: 1 },
+  ];
+
+  // Column count from first VARIANT property's options, fallback to sqrt
+  const totalVariants = componentSet.children.length;
+  const variantProps = (json.properties ?? []).filter((p) => p.type === "VARIANT");
+  const cols =
+    variantProps.length > 0 && variantProps[0].options && variantProps[0].options.length > 0
+      ? variantProps[0].options.length
+      : Math.ceil(Math.sqrt(totalVariants));
+  let maxChildW = 0;
+  for (const child of componentSet.children) {
+    if (child.width > maxChildW) maxChildW = child.width;
+  }
+  componentSet.resize(
+    40 * 2 + maxChildW * cols + 24 * Math.max(0, cols - 1),
+    componentSet.height,
+  );
+
+  // 5. Add non-variant properties to the component set
   if (json.properties) {
     addNonVariantProperties(componentSet, json.properties);
   }
@@ -727,7 +760,7 @@ export async function applyComponentJSON(
     // 1. Try to find existing node
     const existing = await figma.getNodeByIdAsync(nodeId);
 
-    if (existing && existing.type !== "DOCUMENT" && existing.type !== "PAGE") {
+    if (existing && !existing.removed && isOnPage(existing) && existing.type !== "DOCUMENT" && existing.type !== "PAGE") {
       return await updateExistingNode(existing as SceneNode, json);
     }
 

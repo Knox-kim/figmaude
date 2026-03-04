@@ -6,10 +6,10 @@ import ComponentCard from "../components/ComponentCard";
 interface MainViewProps {
   config: GlobalConfig;
   onSettings: () => void;
-  onConflict: (nodeId: string) => void;
+  onShowDetails: (nodeId: string) => void;
 }
 
-export default function MainView({ config, onSettings, onConflict }: MainViewProps) {
+export default function MainView({ config, onSettings, onShowDetails }: MainViewProps) {
   const { mappings, loading, error, autoLinkedCount, refresh } = useSync(config);
   const { syncingId, actionError, progress, handleForceSyncFigma, handleForceSyncCode } = useSyncActions(config, refresh);
 
@@ -59,12 +59,12 @@ export default function MainView({ config, onSettings, onConflict }: MainViewPro
           No linked components yet.
         </div>
       ) : (
-        <table className="w-full border-collapse border border-gray-200 text-xs mb-4">
+        <table className="w-full table-fixed border-collapse border border-gray-200 text-xs mb-4">
           <thead>
             <tr>
-              <th className="border border-gray-200 px-3 py-2 text-center font-medium text-gray-500 bg-gray-50">Figma Comp</th>
-              <th className="border border-gray-200 px-3 py-2 text-center font-medium text-gray-500 bg-gray-50">Component</th>
-              <th className="border border-gray-200 px-3 py-2 text-center font-medium text-gray-500 bg-gray-50">Github Repo.</th>
+              <th className="border border-gray-200 px-3 py-2 text-center font-medium text-gray-500 bg-gray-50 w-[30%]">Figma Comp</th>
+              <th className="border border-gray-200 px-3 py-2 text-center font-medium text-gray-500 bg-gray-50 w-[40%]">Component</th>
+              <th className="border border-gray-200 px-3 py-2 text-center font-medium text-gray-500 bg-gray-50 w-[30%]">Github Repo.</th>
             </tr>
           </thead>
           <tbody>
@@ -80,7 +80,7 @@ export default function MainView({ config, onSettings, onConflict }: MainViewPro
                 progressMessage={progress?.nodeId === m.nodeId ? progress.message : undefined}
                 onForceSyncFigma={() => handleForceSyncFigma(m)}
                 onForceSyncCode={() => handleForceSyncCode(m)}
-                onResolveConflict={() => onConflict(m.nodeId)}
+                onShowDetails={() => onShowDetails(m.nodeId)}
               />
             ))}
           </tbody>

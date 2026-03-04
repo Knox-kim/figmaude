@@ -21,6 +21,7 @@ export default function SettingsView({ config, token, onSave, onBack }: Settings
     config?.styling ?? "tailwind"
   );
   const [tokenFile, setTokenFile] = useState(config?.tokenFile ?? "src/tokens.css");
+  const [componentPage, setComponentPage] = useState(config?.componentPage ?? "");
   const [tokenInput, setTokenInput] = useState(token ?? "");
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +40,7 @@ export default function SettingsView({ config, token, onSave, onBack }: Settings
       framework,
       styling,
       tokenFile,
+      ...(componentPage.trim() ? { componentPage: componentPage.trim() } : {}),
     };
 
     if (!tokenInput.trim()) {
@@ -134,6 +136,18 @@ export default function SettingsView({ config, token, onSave, onBack }: Settings
           </select>
         </label>
       </div>
+
+      <label className="block mb-3">
+        <span className="block text-xs font-medium text-gray-700 mb-1">Component Page</span>
+        <input
+          type="text"
+          value={componentPage}
+          onChange={(e) => setComponentPage(e.target.value)}
+          placeholder="e.g. Components"
+          className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+        />
+        <span className="block text-xs text-gray-400 mt-1">Figma page to scan for components (blank = current page)</span>
+      </label>
 
       <label className="block mb-4">
         <span className="block text-xs font-medium text-gray-700 mb-1">GitHub Token</span>

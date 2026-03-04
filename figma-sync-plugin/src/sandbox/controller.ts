@@ -98,7 +98,16 @@ onRequestFromUI("SCAN_COMPONENTS", async () => {
     }
   }
 
-  walk(figma.currentPage);
+  const config = getGlobalConfig();
+  let scanRoot: BaseNode = figma.currentPage;
+  if (config?.componentPage) {
+    const targetPage = figma.root.children.find(
+      (p) => p.name === config.componentPage
+    );
+    if (targetPage) scanRoot = targetPage;
+  }
+
+  walk(scanRoot);
   return { components };
 });
 

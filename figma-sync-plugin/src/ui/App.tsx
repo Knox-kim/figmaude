@@ -5,16 +5,16 @@ import { setToken, getToken, requestStoredToken, onTokenLoaded } from "./lib/sto
 import MainView from "./pages/MainView";
 import LinkView from "./pages/LinkView";
 import SettingsView from "./pages/SettingsView";
-import ConflictView from "./pages/ConflictView";
+import DetailsView from "./pages/DetailsView";
 import { useSync } from "./hooks/useSync";
 import { useSyncActions } from "./hooks/useSyncActions";
 
-type Page = "main" | "link" | "settings" | "conflict";
+type Page = "main" | "link" | "settings" | "details";
 
 export default function App() {
   const [page, setPage] = useState<Page>("settings");
   const [config, setConfig] = useState<GlobalConfig | null>(null);
-  const [conflictNodeId, setConflictNodeId] = useState<string | null>(null);
+  const [detailsNodeId, setDetailsNodeId] = useState<string | null>(null);
 
   useEffect(() => {
     requestToPlugin("GET_CONFIG").then(({ config: savedConfig }) => {
@@ -41,9 +41,9 @@ export default function App() {
     setPage("main");
   }
 
-  function handleConflict(nodeId: string) {
-    setConflictNodeId(nodeId);
-    setPage("conflict");
+  function handleShowDetails(nodeId: string) {
+    setDetailsNodeId(nodeId);
+    setPage("details");
   }
 
   if (page === "settings" || !config) {
@@ -70,11 +70,11 @@ export default function App() {
     );
   }
 
-  if (page === "conflict" && conflictNodeId) {
+  if (page === "details" && detailsNodeId) {
     return (
-      <ConflictPage
+      <DetailsPage
         config={config}
-        conflictNodeId={conflictNodeId}
+        detailsNodeId={detailsNodeId}
         onBack={() => setPage("main")}
       />
     );
@@ -84,51 +84,51 @@ export default function App() {
     <MainView
       config={config}
       onSettings={() => setPage("settings")}
-      onConflict={handleConflict}
+      onShowDetails={handleShowDetails}
     />
   );
 }
 
-function ConflictPage({
+function DetailsPage({
   config,
-  conflictNodeId,
+  detailsNodeId,
   onBack,
 }: {
   config: GlobalConfig;
-  conflictNodeId: string;
+  detailsNodeId: string;
   onBack: () => void;
 }) {
-  const { mappings, refresh } = useSync(config);
+  const { mappings, loading, refresh } = useSync(config);
   const { syncingId, handleForceSyncFigma, handleForceSyncCode } = useSyncActions(config, refresh);
 
-  const mapping = mappings.find((m) => m.nodeId === conflictNodeId);
+  const mapping = mappings.find((m) => m.nodeId === detailsNodeId);
 
-  if (!mapping) {
+  if (loading || !mapping) {
     return (
       <div className="p-4">
         <button onClick={onBack} className="text-gray-400 hover:text-gray-600 text-sm mb-4">
           &larr; Back
         </button>
         <div className="text-center text-sm text-gray-400 py-8">
-          Mapping not found. It may have been unlinked.
+          {loading ? "Loading..." : "Mapping not found. It may have been unlinked."}
         </div>
       </div>
     );
   }
 
   return (
-    <ConflictView
+    <DetailsView
       mapping={mapping}
-      onKeepFigma={async () => {
+      onPushToCode={async () => {
         await handleForceSyncFigma(mapping);
         onBack();
       }}
-      onKeepCode={async () => {
+      onPullFromCode={async () => {
         await handleForceSyncCode(mapping);
         onBack();
       }}
       onBack={onBack}
-      syncing={syncingId === conflictNodeId}
+      syncing={syncingId === detailsNodeId}
     />
   );
 }
