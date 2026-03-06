@@ -11,6 +11,31 @@ interface TokenChange {
   details?: string;
 }
 
+/**
+ * Format a raw variable value for display.
+ * Alias references are stored as JSON `{ "__alias": "Variable/Name" }`,
+ * which would display as "[object Object]" without this conversion.
+ */
+function formatVarValue(raw: unknown): string {
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === "object" && parsed !== null && "__alias" in parsed) {
+        return `→ ${parsed.__alias}`;
+      }
+      if (typeof parsed === "object" && parsed !== null && "r" in parsed && "g" in parsed && "b" in parsed) {
+        const toHex = (n: number) => Math.round(n * 255).toString(16).padStart(2, "0");
+        return `#${toHex(parsed.r)}${toHex(parsed.g)}${toHex(parsed.b)}`;
+      }
+      return typeof parsed === "object" ? JSON.stringify(parsed) : String(parsed);
+    } catch {
+      return raw;
+    }
+  }
+  if (typeof raw === "object" && raw !== null) return JSON.stringify(raw);
+  return String(raw ?? "");
+}
+
 function diffVariables(
   before: VariableSnapshotEntry[],
   after: VariableSnapshotEntry[]
@@ -23,14 +48,14 @@ function diffVariables(
     const prev = beforeMap.get(name);
     if (!prev) {
       const firstVal = Object.values(entry.valuesByMode)[0] ?? "";
-      changes.push({ name, type: "added", details: firstVal });
+      changes.push({ name, type: "added", details: formatVarValue(firstVal) });
     } else {
       const prevVals = JSON.stringify(prev.valuesByMode);
       const curVals = JSON.stringify(entry.valuesByMode);
       if (prevVals !== curVals) {
         const prevFirst = Object.values(prev.valuesByMode)[0] ?? "";
         const curFirst = Object.values(entry.valuesByMode)[0] ?? "";
-        changes.push({ name, type: "changed", details: `${prevFirst} → ${curFirst}` });
+        changes.push({ name, type: "changed", details: `${formatVarValue(prevFirst)} → ${formatVarValue(curFirst)}` });
       }
     }
   }

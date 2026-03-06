@@ -34,7 +34,7 @@ export default function LinkView({
     setResult(null);
 
     try {
-      const [{ components: unlinked }, fileIndex] = await Promise.all([
+      const [{ components: unlinked }, { fileIndex }] = await Promise.all([
         requestToPlugin("SCAN_COMPONENTS"),
         listAllFiles(repoOwner, repoName, branch, directory.trim()),
       ]);

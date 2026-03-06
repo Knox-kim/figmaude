@@ -6,7 +6,8 @@ const config: Record<SyncState, { label: string; color: string }> = {
   code_changed: { label: "Code changed", color: "bg-orange-100 text-orange-700" },
   conflict: { label: "Conflict", color: "bg-red-100 text-red-700" },
   newly_linked: { label: "Newly linked", color: "bg-blue-100 text-blue-700" },
-  not_linked: { label: "Not linked", color: "bg-gray-100 text-gray-500" },
+  code_only: { label: "Code only", color: "bg-purple-100 text-purple-700" },
+  figma_only: { label: "Figma only", color: "bg-sky-100 text-sky-700" },
 };
 
 export default function StatusBadge({ state }: { state: SyncState }) {

@@ -86,8 +86,16 @@ onRequestFromUI("SCAN_COMPONENTS", async () => {
   const components: Array<{ nodeId: string; name: string }> = [];
 
   function walk(node: BaseNode) {
-    if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+    if (node.type === "COMPONENT_SET") {
+      // Collect the set itself; skip walking variant children
       if (!getNodeMapping(node)) {
+        components.push({ nodeId: node.id, name: node.name });
+      }
+      return;
+    }
+    if (node.type === "COMPONENT") {
+      // Only collect top-level components (not variant children inside a COMPONENT_SET)
+      if (!getNodeMapping(node) && node.parent?.type !== "COMPONENT_SET") {
         components.push({ nodeId: node.id, name: node.name });
       }
     }
@@ -151,11 +159,11 @@ onRequestFromUI("LINK_STYLES", async ({ tokenFile }) => {
 });
 
 onRequestFromUI("UNLINK_VARIABLES", async () => {
-  return { success: unlinkVariables() };
+  return { success: await unlinkVariables() };
 });
 
 onRequestFromUI("UNLINK_STYLES", async () => {
-  return { success: unlinkStyles() };
+  return { success: await unlinkStyles() };
 });
 
 onRequestFromUI("UPDATE_VARIABLES_HASH", async () => {
@@ -169,11 +177,11 @@ onRequestFromUI("UPDATE_STYLES_HASH", async () => {
 });
 
 onRequestFromUI("UPDATE_VARIABLES_CODE_HASH", async ({ codeHash }) => {
-  return { success: updateVariablesCodeHash(codeHash) };
+  return { success: await updateVariablesCodeHash(codeHash) };
 });
 
 onRequestFromUI("UPDATE_STYLES_CODE_HASH", async ({ codeHash }) => {
-  return { success: updateStylesCodeHash(codeHash) };
+  return { success: await updateStylesCodeHash(codeHash) };
 });
 
 onRequestFromUI("GENERATE_CSS", async () => {
@@ -305,6 +313,13 @@ onRequestFromUI("EXTRACT_COMPONENT_JSON", async ({ nodeId }) => {
 });
 
 onRequestFromUI("APPLY_COMPONENT_JSON", async ({ nodeId, json }) => {
-  const newNodeId = await applyComponentJSON(nodeId, json);
-  return { success: true, nodeId: newNodeId };
+  // Diagnostic: show what JSON we're applying
+  const variantProps = (json.properties ?? []).filter((p: { type: string }) => p.type === "VARIANT");
+  const variantCount = (json.variants ?? []).length;
+  figma.notify(
+    `APPLY: "${json.name}" | ${variantProps.length} variant props | ${variantCount} overrides | children: ${(json.children ?? []).length}`,
+    { timeout: 8000 },
+  );
+  const result = await applyComponentJSON(nodeId, json);
+  return { success: true, nodeId: result.nodeId, affectedParents: result.affectedParents };
 });

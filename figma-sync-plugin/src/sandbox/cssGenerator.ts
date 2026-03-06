@@ -20,7 +20,7 @@ function rgbaToHex(value: unknown): string {
     }
     return hex;
   }
-  return String(value);
+  return JSON.stringify(value);
 }
 
 function extractAliasId(rawValue: string): string | null {
@@ -47,7 +47,7 @@ function formatVariableValue(resolvedType: string, rawValue: string): string {
     }
 
     if (resolvedType === "COLOR") return rgbaToHex(value);
-    if (resolvedType === "FLOAT") return typeof value === "number" ? `${value}px` : String(value);
+    if (resolvedType === "FLOAT") return typeof value === "number" ? `${value}px` : JSON.stringify(value);
     if (resolvedType === "STRING") return `"${value}"`;
     if (resolvedType === "BOOLEAN") return String(value);
     return String(value);

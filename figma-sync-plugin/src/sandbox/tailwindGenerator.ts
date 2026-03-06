@@ -23,6 +23,20 @@ function stripCollectionPrefix(name: string): string {
   return name.replace(/\//g, "-").toLowerCase();
 }
 
+/**
+ * Parse a raw variable value and check if it's an alias reference.
+ * Returns `var(--kebab-name)` for aliases, null otherwise.
+ */
+function tryResolveAlias(rawValue: string): string | null {
+  try {
+    const v = JSON.parse(rawValue);
+    if (typeof v === "object" && v !== null && "__alias" in v) {
+      return `var(--${toKebab(v.__alias)})`;
+    }
+  } catch { /* not JSON */ }
+  return null;
+}
+
 export function generateTailwindConfig(
   variables: RawVariableData[],
   styles: RawStyleData[],
@@ -48,12 +62,22 @@ export function generateTailwindConfig(
       if (hasMultipleModes) {
         colors[key] = `var(--${toKebab(v.name)})`;
       } else {
-        try { colors[key] = rgbaToHex(JSON.parse(defaultValue)); }
-        catch { colors[key] = defaultValue; }
+        const alias = tryResolveAlias(defaultValue);
+        if (alias) {
+          colors[key] = alias;
+        } else {
+          try { colors[key] = rgbaToHex(JSON.parse(defaultValue)); }
+          catch { colors[key] = defaultValue; }
+        }
       }
     } else if (v.resolvedType === "FLOAT") {
-      try { spacing[key] = `${JSON.parse(defaultValue)}px`; }
-      catch { spacing[key] = defaultValue; }
+      const alias = tryResolveAlias(defaultValue);
+      if (alias) {
+        spacing[key] = alias;
+      } else {
+        try { spacing[key] = `${JSON.parse(defaultValue)}px`; }
+        catch { spacing[key] = defaultValue; }
+      }
     }
   }
 

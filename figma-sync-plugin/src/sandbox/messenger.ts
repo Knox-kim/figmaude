@@ -63,8 +63,10 @@ export function initMessenger(): void {
         const result = await handler(params as any);
         response.payload = result;
       } catch (err) {
+        const errName = err instanceof Error ? err.constructor.name : "Error";
+        const errMsg = err instanceof Error ? err.message : String(err);
         response.payload = {
-          error: err instanceof Error ? err.message : "Unknown error",
+          error: `[${envelope.payload.type}] ${errName}: ${errMsg}`,
         };
       }
     }

@@ -68,21 +68,22 @@ export default function MainView({ config, onSettings, onShowDetails }: MainView
             </tr>
           </thead>
           <tbody>
-            {mappings.map((m) => (
+            {mappings.map((m) => {
+              const stableId = m.nodeId || m.linkedFile;
+              return (
               <ComponentCard
-                key={m.nodeId}
+                key={stableId}
                 kind={m.kind ?? "component"}
                 componentName={m.componentName}
                 state={m.state}
-                lastSyncedSnapshot={m.lastSyncedSnapshot}
-                currentSnapshot={m.currentSnapshot}
-                syncing={syncingId === m.nodeId}
-                progressMessage={progress?.nodeId === m.nodeId ? progress.message : undefined}
+                syncing={syncingId === stableId}
+                progressMessage={progress?.nodeId === stableId ? progress.message : undefined}
                 onForceSyncFigma={() => handleForceSyncFigma(m)}
                 onForceSyncCode={() => handleForceSyncCode(m)}
-                onShowDetails={() => onShowDetails(m.nodeId)}
+                onShowDetails={m.nodeId ? () => onShowDetails(m.nodeId) : undefined}
               />
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}

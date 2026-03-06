@@ -60,7 +60,7 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
   // --- Push to Code (Figma → GitHub) ---
 
   const handleForceSyncFigma = useCallback(async (mapping: MappingWithState) => {
-    const id = mapping.nodeId;
+    const id = mapping.nodeId || mapping.linkedFile;
     setSyncingId(id);
     setError(null);
 
@@ -113,7 +113,7 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
           // File doesn't exist yet
         }
 
-        await updateFile({
+        const result = await updateFile({
           owner: config.repoOwner,
           repo: config.repoName,
           path: jsonPath,
@@ -123,11 +123,13 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
           sha: existingSha,
         });
 
-        // Snapshot the code file's current SHA as the sync baseline
-        // Change detection tracks the code file (linkedFile), not the JSON file
+        if (mapping.state === "figma_only") {
+          // Link the component to the newly created JSON file
+          await requestToPlugin("LINK_COMPONENT", { nodeId: id, codePath: jsonPath });
+        }
         reportProgress(id, "Updating hashes...");
         await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: id });
-        await requestToPlugin("UPDATE_CODE_HASH", { nodeId: id, codeHash: mapping.currentCodeHash });
+        await requestToPlugin("UPDATE_CODE_HASH", { nodeId: id, codeHash: result.sha });
       }
 
       await refresh();
@@ -142,7 +144,7 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
   // --- Pull from Code (GitHub → Figma) ---
 
   const handleForceSyncCode = useCallback(async (mapping: MappingWithState) => {
-    const id = mapping.nodeId;
+    const id = mapping.nodeId || mapping.linkedFile;
     setSyncingId(id);
     setError(null);
 
@@ -173,26 +175,40 @@ export function useSyncActions(config: GlobalConfig, refresh: () => Promise<void
         // Component pull: read JSON from GitHub and apply to Figma
         reportProgress(id, "Reading component JSON from GitHub...");
         const jsonPath = `.figma/components/${mapping.componentName}.json`;
-        const { content } = await getFileContent(
+        const { content, sha } = await getFileContent(
           config.repoOwner, config.repoName, jsonPath, config.branch
         );
 
         const json: ComponentDescriptor = JSON.parse(content);
 
         reportProgress(id, "Applying to Figma...");
-        const { nodeId: newNodeId } = await requestToPlugin("APPLY_COMPONENT_JSON", {
-          nodeId: id,
+        const figmaNodeId = mapping.nodeId; // "" for code_only
+        const { nodeId: newNodeId, affectedParents } = await requestToPlugin("APPLY_COMPONENT_JSON", {
+          nodeId: figmaNodeId,
           json,
         });
 
-        // Snapshot the code file's current SHA as the sync baseline
+        // Link/re-link the component
+        const codePath = mapping.linkedFile;
         reportProgress(id, "Updating hashes...");
-        if (newNodeId !== id) {
-          await requestToPlugin("LINK_COMPONENT", { nodeId: newNodeId, codePath: mapping.linkedFile });
-          await requestToPlugin("UNLINK_COMPONENT", { nodeId: id });
+        if (!figmaNodeId || newNodeId !== figmaNodeId) {
+          await requestToPlugin("LINK_COMPONENT", { nodeId: newNodeId, codePath });
+          if (figmaNodeId && newNodeId !== figmaNodeId) {
+            await requestToPlugin("UNLINK_COMPONENT", { nodeId: figmaNodeId });
+          }
         }
         await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: newNodeId });
         await requestToPlugin("UPDATE_CODE_HASH", { nodeId: newNodeId, codeHash: mapping.currentCodeHash });
+
+        // Update hashes for parent components affected by instance swapComponent
+        // to prevent false "figma_changed" detection
+        for (const parentId of affectedParents) {
+          try {
+            await requestToPlugin("UPDATE_FIGMA_HASH", { nodeId: parentId });
+          } catch {
+            // Non-critical: parent hash will refresh on next sync check
+          }
+        }
       }
 
       await refresh();

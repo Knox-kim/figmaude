@@ -204,7 +204,7 @@ export async function linkVariables(tokenFile: string): Promise<boolean> {
   return true;
 }
 
-export function unlinkVariables(): boolean {
+export async function unlinkVariables(): Promise<boolean> {
   clearTokenMapping(VARIABLES_KEY);
   return true;
 }
@@ -226,7 +226,7 @@ export async function updateVariablesHash(): Promise<string> {
   return newHash;
 }
 
-export function updateVariablesCodeHash(codeHash: string): boolean {
+export async function updateVariablesCodeHash(codeHash: string): Promise<boolean> {
   const mapping = getTokenMapping(VARIABLES_KEY);
   if (!mapping) return false;
   mapping.codeHash = codeHash;
@@ -273,7 +273,7 @@ export async function linkStyles(tokenFile: string): Promise<boolean> {
   return true;
 }
 
-export function unlinkStyles(): boolean {
+export async function unlinkStyles(): Promise<boolean> {
   clearTokenMapping(STYLES_KEY);
   return true;
 }
@@ -295,7 +295,7 @@ export async function updateStylesHash(): Promise<string> {
   return newHash;
 }
 
-export function updateStylesCodeHash(codeHash: string): boolean {
+export async function updateStylesCodeHash(codeHash: string): Promise<boolean> {
   const mapping = getTokenMapping(STYLES_KEY);
   if (!mapping) return false;
   mapping.codeHash = codeHash;

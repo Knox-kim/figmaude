@@ -10,14 +10,19 @@ import type {
   ComponentDescriptorProperty,
   ComponentDescriptorVariantOverride,
 } from "../shared/types";
-import { parseDescription } from "../shared/descriptionParser";
+import { parseDescription, updateSyncNotes } from "../shared/descriptionParser";
 import { isOnPage } from "./mapping";
 
 // --- Helpers ---
 
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
 function rgbToHex(r: number, g: number, b: number): string {
   const toHex = (v: number) =>
-    Math.round(v * 255)
+    Math.round(clamp01(v) * 255)
       .toString(16)
       .padStart(2, "0");
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
@@ -25,8 +30,9 @@ function rgbToHex(r: number, g: number, b: number): string {
 
 function rgbaToHex(r: number, g: number, b: number, a: number): string {
   const hex = rgbToHex(r, g, b);
-  if (a < 1) {
-    const alphaHex = Math.round(a * 255)
+  const ca = clamp01(a);
+  if (ca < 1) {
+    const alphaHex = Math.round(ca * 255)
       .toString(16)
       .padStart(2, "0");
     return `${hex}${alphaHex}`;
@@ -46,7 +52,8 @@ async function resolveVariableName(binding: VariableAlias): Promise<string | und
 // --- Fill / Stroke / Effect extractors ---
 
 async function extractFills(
-  node: SceneNode
+  node: SceneNode,
+  notes?: string[],
 ): Promise<ComponentDescriptorFill[] | undefined> {
   if (!("fills" in node)) return undefined;
   const fills = node.fills;
@@ -56,7 +63,12 @@ async function extractFills(
 
   for (let i = 0; i < fills.length; i++) {
     const paint = fills[i];
-    if (paint.type !== "SOLID") continue;
+    if (paint.type !== "SOLID") {
+      if (paint.visible !== false && notes) {
+        notes.push(`gradient/image fill on "${node.name}" skipped (SOLID only)`);
+      }
+      continue;
+    }
     if (paint.visible === false) continue;
 
     const fill: ComponentDescriptorFill = {
@@ -87,7 +99,8 @@ async function extractFills(
 }
 
 async function extractStrokes(
-  node: SceneNode
+  node: SceneNode,
+  notes?: string[],
 ): Promise<ComponentDescriptorStroke[] | undefined> {
   if (!("strokes" in node)) return undefined;
   const strokes = (node as MinimalStrokesMixin).strokes;
@@ -106,7 +119,12 @@ async function extractStrokes(
 
   for (let i = 0; i < strokes.length; i++) {
     const paint = strokes[i];
-    if (paint.type !== "SOLID") continue;
+    if (paint.type !== "SOLID") {
+      if (paint.visible !== false && notes) {
+        notes.push(`gradient stroke on "${node.name}" skipped (SOLID only)`);
+      }
+      continue;
+    }
     if (paint.visible === false) continue;
 
     const stroke: ComponentDescriptorStroke = {
@@ -121,6 +139,14 @@ async function extractStrokes(
     }
     if (paint.boundVariables?.color) {
       stroke.boundVariable = await resolveVariableName(paint.boundVariables.color);
+    }
+
+    // Stroke alignment (same for all strokes on a node)
+    if ("strokeAlign" in node) {
+      const align = (node as GeometryMixin).strokeAlign as "INSIDE" | "OUTSIDE" | "CENTER";
+      if (align !== "CENTER") {
+        stroke.align = align;
+      }
     }
 
     result.push(stroke);
@@ -168,9 +194,10 @@ function extractEffects(
 
 // --- Layout ---
 
-function extractLayout(
-  node: SceneNode
-): ComponentDescriptorLayout | undefined {
+async function extractLayout(
+  node: SceneNode,
+  notes?: string[],
+): Promise<ComponentDescriptorLayout | undefined> {
   if (!("layoutMode" in node)) return undefined;
   const frame = node as FrameNode;
 
@@ -190,16 +217,36 @@ function extractLayout(
     layout.padding = padding;
   }
 
-  if (frame.itemSpacing) {
+  if (frame.itemSpacing !== undefined) {
     layout.itemSpacing = frame.itemSpacing;
   }
 
   layout.primaryAxisAlign = frame.primaryAxisAlignItems;
   // BASELINE is a valid Figma value but not in our descriptor type — map to MIN
   const counterAlign = frame.counterAxisAlignItems;
+  if (counterAlign === "BASELINE" && notes) {
+    notes.push(`BASELINE alignment on "${node.name}" mapped to MIN`);
+  }
   layout.counterAxisAlign = counterAlign === "BASELINE" ? "MIN" : counterAlign;
   layout.primaryAxisSizing = frame.primaryAxisSizingMode === "FIXED" ? "FIXED" : "AUTO";
   layout.counterAxisSizing = frame.counterAxisSizingMode === "FIXED" ? "FIXED" : "AUTO";
+
+  // Extract layout variable bindings
+  const bv = frame.boundVariables;
+  if (bv) {
+    const layoutBV: NonNullable<ComponentDescriptorLayout["boundVariables"]> = {};
+    const fields = ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "itemSpacing", "counterAxisSpacing"] as const;
+    for (const field of fields) {
+      const binding = bv[field];
+      if (binding) {
+        const name = await resolveVariableName(binding as VariableAlias);
+        if (name) layoutBV[field] = name;
+      }
+    }
+    if (Object.keys(layoutBV).length > 0) {
+      layout.boundVariables = layoutBV;
+    }
+  }
 
   return layout;
 }
@@ -207,11 +254,38 @@ function extractLayout(
 // --- Styles (combines fills, strokes, effects, cornerRadius, size) ---
 
 async function extractStyles(
-  node: SceneNode
+  node: SceneNode,
+  notes?: string[],
 ): Promise<ComponentDescriptorStyles | undefined> {
-  const fills = await extractFills(node);
-  const strokes = await extractStrokes(node);
+  const fills = await extractFills(node, notes);
+  const strokes = await extractStrokes(node, notes);
   const effects = extractEffects(node);
+
+  // Capture PaintStyle / EffectStyle references (node-level style bindings)
+  let fillStyleRef: string | undefined;
+  if ("fillStyleId" in node) {
+    const fsId = (node as GeometryMixin).fillStyleId;
+    if (fsId && fsId !== figma.mixed && typeof fsId === "string") {
+      const style = await figma.getStyleByIdAsync(fsId);
+      if (style) fillStyleRef = style.name;
+    }
+  }
+  let strokeStyleRef: string | undefined;
+  if ("strokeStyleId" in node) {
+    const ssId = (node as GeometryMixin).strokeStyleId;
+    if (ssId && ssId !== figma.mixed && typeof ssId === "string") {
+      const style = await figma.getStyleByIdAsync(ssId);
+      if (style) strokeStyleRef = style.name;
+    }
+  }
+  let effectStyleRef: string | undefined;
+  if ("effectStyleId" in node) {
+    const esId = (node as BlendMixin).effectStyleId;
+    if (esId && typeof esId === "string") {
+      const style = await figma.getStyleByIdAsync(esId);
+      if (style) effectStyleRef = style.name;
+    }
+  }
 
   let cornerRadius: ComponentDescriptorStyles["cornerRadius"] | undefined;
   if ("cornerRadius" in node) {
@@ -230,6 +304,9 @@ async function extractStyles(
   }
 
   const styles: ComponentDescriptorStyles = {};
+  if (fillStyleRef) styles.fillStyleRef = fillStyleRef;
+  if (strokeStyleRef) styles.strokeStyleRef = strokeStyleRef;
+  if (effectStyleRef) styles.effectStyleRef = effectStyleRef;
   if (fills) styles.fills = fills;
   if (strokes) styles.strokes = strokes;
   if (effects) styles.effects = effects;
@@ -237,15 +314,53 @@ async function extractStyles(
   styles.width = Math.round(node.width);
   styles.height = Math.round(node.height);
 
+  if ("layoutSizingHorizontal" in node) {
+    const frame = node as FrameNode;
+    styles.layoutSizingHorizontal = frame.layoutSizingHorizontal;
+    styles.layoutSizingVertical = frame.layoutSizingVertical;
+  }
+
+  if ("opacity" in node && (node as BlendMixin).opacity < 1) {
+    styles.opacity = (node as BlendMixin).opacity;
+  }
+
+  // Extract style variable bindings
+  if ("boundVariables" in node) {
+    const bv = (node as SceneNode & { boundVariables?: Record<string, VariableAlias> }).boundVariables;
+    if (bv) {
+      const stylesBV: NonNullable<ComponentDescriptorStyles["boundVariables"]> = {};
+      const fields = ["width", "height", "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", "opacity"] as const;
+      for (const field of fields) {
+        const binding = bv[field as string];
+        if (binding) {
+          const name = await resolveVariableName(binding as VariableAlias);
+          if (name) stylesBV[field] = name;
+        }
+      }
+      if (Object.keys(stylesBV).length > 0) {
+        styles.boundVariables = stylesBV;
+      }
+    }
+  }
+
   return Object.keys(styles).length > 0 ? styles : undefined;
 }
 
 // --- Text styles ---
 
-function extractTextStyles(
+async function extractTextStyles(
   node: TextNode
-): ComponentDescriptorTextStyles | undefined {
+): Promise<ComponentDescriptorTextStyles | undefined> {
   const ts: ComponentDescriptorTextStyles = {};
+
+  // Capture TextStyle reference if bound (e.g. "t14")
+  const textStyleId = node.textStyleId;
+  if (textStyleId && textStyleId !== figma.mixed && typeof textStyleId === "string") {
+    const style = await figma.getStyleByIdAsync(textStyleId);
+    if (style) {
+      ts.textStyleRef = style.name;
+    }
+  }
 
   const fontSize = node.fontSize;
   if (fontSize !== figma.mixed) {
@@ -271,11 +386,16 @@ function extractTextStyles(
   }
 
   const letterSpacing = node.letterSpacing;
-  if (letterSpacing !== figma.mixed) {
-    ts.letterSpacing = letterSpacing.value;
+  if (letterSpacing !== figma.mixed && letterSpacing.value !== 0) {
+    if (letterSpacing.unit === "PERCENT") {
+      ts.letterSpacing = { value: letterSpacing.value, unit: "PERCENT" };
+    } else {
+      ts.letterSpacing = letterSpacing.value;
+    }
   }
 
   ts.textAlignHorizontal = node.textAlignHorizontal;
+  ts.textAutoResize = node.textAutoResize;
 
   // Text fills
   const fills = node.fills;
@@ -283,13 +403,17 @@ function extractTextStyles(
     const textFills: ComponentDescriptorFill[] = [];
     for (const paint of fills) {
       if (paint.type === "SOLID" && paint.visible !== false) {
-        textFills.push({
+        const fill: ComponentDescriptorFill = {
           type: "SOLID",
           color: rgbToHex(paint.color.r, paint.color.g, paint.color.b),
-          ...(paint.opacity !== undefined && paint.opacity < 1
-            ? { opacity: paint.opacity }
-            : {}),
-        });
+        };
+        if (paint.opacity !== undefined && paint.opacity < 1) {
+          fill.opacity = paint.opacity;
+        }
+        if (paint.boundVariables?.color) {
+          fill.boundVariable = await resolveVariableName(paint.boundVariables.color);
+        }
+        textFills.push(fill);
       }
     }
     if (textFills.length > 0) {
@@ -325,15 +449,56 @@ function fontStyleToWeight(style: string): number {
 // --- Children ---
 
 async function extractChild(
-  node: SceneNode
+  node: SceneNode,
+  notes?: string[],
 ): Promise<ComponentDescriptorChild | null> {
-  const supportedTypes = ["FRAME", "TEXT", "INSTANCE", "RECTANGLE", "ELLIPSE", "VECTOR"];
+  const supportedTypes = ["FRAME", "TEXT", "INSTANCE", "RECTANGLE", "ELLIPSE", "VECTOR", "POLYGON", "STAR", "LINE"];
   if (!supportedTypes.includes(node.type)) return null;
+  if ("blendMode" in node && notes) {
+    const mode = (node as BlendMixin).blendMode;
+    if (mode !== "NORMAL" && mode !== "PASS_THROUGH") {
+      notes.push(`blendMode ${mode} on "${node.name}" not preserved`);
+    }
+  }
 
   const child: ComponentDescriptorChild = {
     type: node.type as ComponentDescriptorChild["type"],
     name: node.name,
   };
+
+  // Shape-specific data extraction
+  if (node.type === "POLYGON") {
+    const poly = node as PolygonNode;
+    child.pointCount = poly.pointCount;
+  } else if (node.type === "STAR") {
+    const star = node as StarNode;
+    child.pointCount = star.pointCount;
+    child.innerRadius = star.innerRadius;
+  } else if (node.type === "VECTOR") {
+    try {
+      const vnode = node as VectorNode;
+      if (vnode.vectorPaths && vnode.vectorPaths.length > 0) {
+        child.vectorPaths = vnode.vectorPaths.map((vp) => ({
+          windingRule: vp.windingRule,
+          data: vp.data,
+        }));
+      } else if (notes) {
+        notes.push(`VECTOR "${node.name}" has no vectorPaths, will become placeholder RECTANGLE`);
+      }
+    } catch {
+      if (notes) {
+        notes.push(`VECTOR "${node.name}" vectorPaths extraction failed, will become placeholder RECTANGLE`);
+      }
+    }
+  }
+
+  // Extract rotation (applies to all shape nodes)
+  if ("rotation" in node) {
+    const rot = (node as SceneNode & { rotation: number }).rotation;
+    if (rot !== 0) {
+      child.rotation = rot;
+    }
+  }
 
   // Instance: resolve componentRef
   if (node.type === "INSTANCE") {
@@ -345,21 +510,31 @@ async function extractChild(
       } else {
         child.componentRef = mainComponent.name;
       }
+    } else {
+      // Fallback: use instance name as componentRef so builder can resolve by name
+      child.componentRef = node.name;
+      if (notes) {
+        notes.push(`instance "${node.name}" main component not found, using name as ref`);
+      }
+    }
+    // Note: instance overrides (property values) are not captured
+    if (notes && Object.keys(instance.componentProperties ?? {}).length > 0) {
+      notes.push(`instance "${node.name}" overrides not captured (defaults only)`);
     }
   }
 
   // Layout (for frame-like nodes)
   if ("layoutMode" in node) {
-    child.layout = extractLayout(node);
+    child.layout = await extractLayout(node, notes);
   }
 
   // Styles
-  child.styles = await extractStyles(node);
+  child.styles = await extractStyles(node, notes);
 
   // Text-specific
   if (node.type === "TEXT") {
     const textNode = node as TextNode;
-    child.textStyles = extractTextStyles(textNode);
+    child.textStyles = await extractTextStyles(textNode);
     child.textContent = textNode.characters;
 
     // Check if text is bound to a component property (bindTo)
@@ -371,12 +546,20 @@ async function extractChild(
     }
   }
 
+  // Check if visibility is bound to a BOOLEAN component property
+  if ("componentPropertyReferences" in node) {
+    const refs = (node as SceneNode & { componentPropertyReferences?: Record<string, string> }).componentPropertyReferences;
+    if (refs?.visible) {
+      child.visibleBindTo = stripPropertyHash(refs.visible);
+    }
+  }
+
   // Recurse into children for frame-like nodes
   if ("children" in node && node.type !== "INSTANCE") {
     const frame = node as FrameNode;
     const childNodes: ComponentDescriptorChild[] = [];
     for (const c of frame.children) {
-      const extracted = await extractChild(c);
+      const extracted = await extractChild(c, notes);
       if (extracted) childNodes.push(extracted);
     }
     if (childNodes.length > 0) {
@@ -392,16 +575,44 @@ async function extractChild(
 function extractProperties(
   node: ComponentNode | ComponentSetNode
 ): ComponentDescriptorProperty[] | undefined {
-  let defs: ComponentPropertyDefinitions;
+  let defs: ComponentPropertyDefinitions | null = null;
   try {
     defs = node.componentPropertyDefinitions;
   } catch {
-    // ComponentSet with validation errors (e.g. conflicting variants) throws here
-    return undefined;
+    // ComponentSet with validation errors (e.g. conflicting variants) throws here.
+    // Fall through — we'll infer VARIANT properties from children names below.
   }
-  if (!defs || Object.keys(defs).length === 0) return undefined;
 
   const result: ComponentDescriptorProperty[] = [];
+
+  // If defs failed but this is a ComponentSet, infer VARIANT properties from children
+  if (!defs && node.type === "COMPONENT_SET") {
+    const propValuesMap = new Map<string, Set<string>>();
+    for (const child of (node as ComponentSetNode).children) {
+      if (child.type !== "COMPONENT") continue;
+      for (const part of child.name.split(",").map((s) => s.trim())) {
+        const eqIdx = part.indexOf("=");
+        if (eqIdx >= 0) {
+          const key = part.slice(0, eqIdx).trim();
+          const value = part.slice(eqIdx + 1).trim();
+          if (!propValuesMap.has(key)) propValuesMap.set(key, new Set());
+          propValuesMap.get(key)!.add(value);
+        }
+      }
+    }
+    for (const [name, values] of propValuesMap) {
+      const options = [...values];
+      result.push({
+        name,
+        type: "VARIANT",
+        options,
+        default: options[0],
+      });
+    }
+    return result.length > 0 ? result : undefined;
+  }
+
+  if (!defs || Object.keys(defs).length === 0) return undefined;
 
   for (const [key, def] of Object.entries(defs)) {
     const name = stripPropertyHash(key);
@@ -437,7 +648,7 @@ async function extractVariants(
 
   const baseVariant = componentSet.defaultVariant;
   const baseStyles = await extractStyles(baseVariant);
-  const baseLayout = extractLayout(baseVariant);
+  const baseLayout = await extractLayout(baseVariant);
   const baseChildren = await extractChildMap(baseVariant);
 
   const overrides: ComponentDescriptorVariantOverride[] = [];
@@ -445,48 +656,59 @@ async function extractVariants(
   for (const variant of children) {
     if (variant.id === baseVariant.id) continue;
 
-    const props = parseVariantName(variant.name);
-    const variantStyles = await extractStyles(variant);
-    const variantLayout = extractLayout(variant);
-    const variantChildren = await extractChildMap(variant);
+    try {
+      const props = parseVariantName(variant.name);
+      const variantStyles = await extractStyles(variant);
+      const variantLayout = await extractLayout(variant);
+      const variantChildren = await extractChildMap(variant);
 
-    const override: ComponentDescriptorVariantOverride = {
-      props,
-      overrides: {},
-    };
+      const override: ComponentDescriptorVariantOverride = {
+        props,
+        overrides: {},
+      };
 
-    // Diff styles
-    const styleDiff = diffStyles(baseStyles, variantStyles);
-    if (styleDiff) override.overrides.styles = styleDiff;
+      // Diff styles
+      const styleDiff = diffStyles(baseStyles, variantStyles);
+      if (styleDiff) override.overrides.styles = styleDiff;
 
-    // Diff layout
-    const layoutDiff = diffLayout(baseLayout, variantLayout);
-    if (layoutDiff) override.overrides.layout = layoutDiff;
+      // Diff layout
+      const layoutDiff = diffLayout(baseLayout, variantLayout);
+      if (layoutDiff) override.overrides.layout = layoutDiff;
 
-    // Diff children
-    const childDiff = diffChildren(baseChildren, variantChildren);
-    if (childDiff) {
-      if (childDiff.modified) override.overrides.children = childDiff.modified;
-      if (childDiff.removedNames) override.overrides.removedChildren = childDiff.removedNames;
+      // Diff children
+      const childDiff = diffChildren(baseChildren, variantChildren);
+      if (childDiff) {
+        if (childDiff.modified) override.overrides.children = childDiff.modified;
+        if (childDiff.childOrder) override.overrides.childOrder = childDiff.childOrder;
+        if (childDiff.removedNames) override.overrides.removedChildren = childDiff.removedNames;
 
-      // Extract full child definitions for children added in this variant
-      if (childDiff.addedNames) {
-        const added: ComponentDescriptorChild[] = [];
-        if ("children" in variant) {
-          for (const child of (variant as FrameNode).children) {
-            if (childDiff.addedNames.includes(child.name)) {
-              const extracted = await extractChild(child);
-              if (extracted) added.push(extracted);
+        // Extract full child definitions for children added in this variant
+        if (childDiff.addedNames) {
+          const added: ComponentDescriptorChild[] = [];
+          if ("children" in variant) {
+            for (const child of (variant as FrameNode).children) {
+              if (childDiff.addedNames.includes(child.name)) {
+                const extracted = await extractChild(child);
+                if (extracted) added.push(extracted);
+              }
             }
           }
+          if (added.length > 0) override.overrides.addedChildren = added;
         }
-        if (added.length > 0) override.overrides.addedChildren = added;
       }
-    }
 
-    // Always include — even if no visual overrides, the variant's props
-    // (e.g., Size=lg) define a distinct variant that must exist.
-    overrides.push(override);
+      // Always include — even if no visual overrides, the variant's props
+      // (e.g., Size=lg) define a distinct variant that must exist.
+      overrides.push(override);
+    } catch (err) {
+      // Skip this variant but continue extracting the rest
+      console.error(`Failed to extract variant "${variant.name}":`, err);
+      // Still include the variant with empty overrides so it's not lost
+      overrides.push({
+        props: parseVariantName(variant.name),
+        overrides: {},
+      });
+    }
   }
 
   return overrides.length > 0 ? overrides : undefined;
@@ -510,6 +732,8 @@ interface ChildSnapshot {
   styles?: ComponentDescriptorStyles;
   textStyles?: ComponentDescriptorTextStyles;
   textContent?: string;
+  rotation?: number;
+  vectorPaths?: Array<{ windingRule: "EVENODD" | "NONZERO"; data: string }>;
 }
 
 async function extractChildMap(
@@ -524,8 +748,23 @@ async function extractChildMap(
     };
     if (child.type === "TEXT") {
       const textNode = child as TextNode;
-      snapshot.textStyles = extractTextStyles(textNode);
+      snapshot.textStyles = await extractTextStyles(textNode);
       snapshot.textContent = textNode.characters;
+    }
+    if ("rotation" in child) {
+      const rot = (child as SceneNode & { rotation: number }).rotation;
+      if (rot !== 0) snapshot.rotation = rot;
+    }
+    if (child.type === "VECTOR") {
+      try {
+        const vnode = child as VectorNode;
+        if (vnode.vectorPaths && vnode.vectorPaths.length > 0) {
+          snapshot.vectorPaths = vnode.vectorPaths.map((vp) => ({
+            windingRule: vp.windingRule,
+            data: vp.data,
+          }));
+        }
+      } catch { /* ignore */ }
     }
     map.set(child.name, snapshot);
   }
@@ -611,7 +850,10 @@ interface ChildDiffResult {
     styles?: Partial<ComponentDescriptorStyles>;
     textStyles?: Partial<ComponentDescriptorTextStyles>;
     textContent?: string;
+    rotation?: number;
+    vectorPaths?: Array<{ windingRule: "EVENODD" | "NONZERO"; data: string }>;
   }>;
+  childOrder?: string[];
   addedNames?: string[];
   removedNames?: string[];
 }
@@ -624,6 +866,8 @@ function diffChildren(
     styles?: Partial<ComponentDescriptorStyles>;
     textStyles?: Partial<ComponentDescriptorTextStyles>;
     textContent?: string;
+    rotation?: number;
+    vectorPaths?: Array<{ windingRule: "EVENODD" | "NONZERO"; data: string }>;
   }> = {};
   let hasDiff = false;
 
@@ -643,6 +887,8 @@ function diffChildren(
       styles?: Partial<ComponentDescriptorStyles>;
       textStyles?: Partial<ComponentDescriptorTextStyles>;
       textContent?: string;
+      rotation?: number;
+      vectorPaths?: Array<{ windingRule: "EVENODD" | "NONZERO"; data: string }>;
     } = {};
     let childHasDiff = false;
 
@@ -665,6 +911,16 @@ function diffChildren(
       childHasDiff = true;
     }
 
+    if (variantChild.rotation !== baseChild.rotation) {
+      childOverride.rotation = variantChild.rotation ?? 0;
+      childHasDiff = true;
+    }
+
+    if (JSON.stringify(variantChild.vectorPaths) !== JSON.stringify(baseChild.vectorPaths)) {
+      childOverride.vectorPaths = variantChild.vectorPaths;
+      childHasDiff = true;
+    }
+
     if (childHasDiff) {
       modified[name] = childOverride;
       hasDiff = true;
@@ -679,10 +935,20 @@ function diffChildren(
     }
   }
 
+  // Compare children order
+  const baseOrder = [...base.keys()];
+  const variantOrder = [...variant.keys()];
+  let childOrder: string[] | undefined;
+  if (JSON.stringify(baseOrder) !== JSON.stringify(variantOrder)) {
+    childOrder = variantOrder;
+    hasDiff = true;
+  }
+
   if (!hasDiff) return undefined;
 
   return {
     modified: Object.keys(modified).length > 0 ? modified : undefined,
+    childOrder,
     addedNames: addedNames.length > 0 ? addedNames : undefined,
     removedNames: removedNames.length > 0 ? removedNames : undefined,
   };
@@ -705,6 +971,8 @@ export async function extractComponentJSON(
     );
   }
 
+  const syncNotes: string[] = [];
+
   const descriptor: ComponentDescriptor = {
     $schema: "figma-sync/component-descriptor@1",
     name: node.name,
@@ -726,14 +994,25 @@ export async function extractComponentJSON(
   if (node.type === "COMPONENT_SET") {
     // For component sets, extract from the default variant (base)
     const baseVariant = node.defaultVariant;
-    descriptor.layout = extractLayout(baseVariant);
-    descriptor.styles = await extractStyles(baseVariant);
+
+    // Sync VARIANT defaults to match the actual default variant's values,
+    // so the builder names the base variant correctly.
+    if (descriptor.properties) {
+      const basePropValues = parseVariantName(baseVariant.name);
+      for (const prop of descriptor.properties) {
+        if (prop.type === "VARIANT" && basePropValues[prop.name] !== undefined) {
+          prop.default = basePropValues[prop.name];
+        }
+      }
+    }
+    descriptor.layout = await extractLayout(baseVariant, syncNotes);
+    descriptor.styles = await extractStyles(baseVariant, syncNotes);
 
     // Extract children from base variant
     const children: ComponentDescriptorChild[] = [];
     if ("children" in baseVariant) {
       for (const child of baseVariant.children) {
-        const extracted = await extractChild(child);
+        const extracted = await extractChild(child, syncNotes);
         if (extracted) children.push(extracted);
       }
     }
@@ -745,18 +1024,24 @@ export async function extractComponentJSON(
     descriptor.variants = await extractVariants(node);
   } else {
     // Single component
-    descriptor.layout = extractLayout(node);
-    descriptor.styles = await extractStyles(node);
+    descriptor.layout = await extractLayout(node, syncNotes);
+    descriptor.styles = await extractStyles(node, syncNotes);
 
     // Extract children
     const children: ComponentDescriptorChild[] = [];
     for (const child of node.children) {
-      const extracted = await extractChild(child);
+      const extracted = await extractChild(child, syncNotes);
       if (extracted) children.push(extracted);
     }
     if (children.length > 0) {
       descriptor.children = children;
     }
+  }
+
+  // Store syncNotes in descriptor and update Figma description
+  if (syncNotes.length > 0) {
+    descriptor.syncNotes = syncNotes;
+    node.description = updateSyncNotes(node.description ?? "", syncNotes);
   }
 
   return descriptor;

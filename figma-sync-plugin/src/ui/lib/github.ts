@@ -123,7 +123,7 @@ export async function listAllFiles(
   repo: string,
   branch: string,
   basePath: string
-): Promise<Map<string, string>> {
+): Promise<{ fileIndex: Map<string, string>; descriptorNames: Set<string> }> {
   const normalizedBase = basePath.replace(/\/+$/, ""); // strip trailing slashes
   const data = await githubFetch<GitHubTreeResponse>(
     `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`
@@ -131,9 +131,29 @@ export async function listAllFiles(
 
   const seen = new Map<string, string>();     // lowered name → full path
   const ambiguous = new Set<string>();         // names that appear in multiple dirs
+  const descriptorNames = new Set<string>();   // component names with .figma/components/<Name>.json
 
   for (const entry of data.tree) {
     if (entry.type !== "blob") continue;
+
+    // Collect .figma/components/*.json descriptor names
+    if (entry.path.startsWith(".figma/components/") && entry.path.endsWith(".json")) {
+      const jsonName = entry.path.split("/").pop()!.replace(/\.json$/, "").toLowerCase();
+      descriptorNames.add(jsonName);
+      // When basePath targets .figma/components, also index for auto-linking
+      if (entry.path.startsWith(normalizedBase + "/")) {
+        if (!ambiguous.has(jsonName)) {
+          if (seen.has(jsonName)) {
+            ambiguous.add(jsonName);
+            seen.delete(jsonName);
+          } else {
+            seen.set(jsonName, entry.path);
+          }
+        }
+      }
+      continue;
+    }
+
     if (normalizedBase && !entry.path.startsWith(normalizedBase + "/") && entry.path !== normalizedBase) continue;
 
     const ext = entry.path.substring(entry.path.lastIndexOf("."));
@@ -152,7 +172,7 @@ export async function listAllFiles(
     }
   }
 
-  return seen;
+  return { fileIndex: seen, descriptorNames };
 }
 
 export async function getFileContent(

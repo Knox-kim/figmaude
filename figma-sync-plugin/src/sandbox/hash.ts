@@ -13,6 +13,7 @@ interface VisualProps {
   height: number;
   fills?: readonly Paint[] | typeof figma.mixed;
   strokes?: readonly Paint[];
+  effects?: readonly Effect[];
   cornerRadius?: number | typeof figma.mixed;
   paddingTop?: number;
   paddingRight?: number;
@@ -20,6 +21,9 @@ interface VisualProps {
   paddingLeft?: number;
   layoutMode?: "NONE" | "HORIZONTAL" | "VERTICAL" | "GRID";
   itemSpacing?: number;
+  opacity?: number;
+  characters?: string;
+  fontSize?: number | typeof figma.mixed;
   children?: VisualProps[];
 }
 
@@ -32,7 +36,9 @@ function extractVisualProps(node: SceneNode): VisualProps {
 
   if ("fills" in node) props.fills = node.fills;
   if ("strokes" in node) props.strokes = node.strokes;
+  if ("effects" in node) props.effects = (node as BlendMixin).effects;
   if ("cornerRadius" in node) props.cornerRadius = node.cornerRadius;
+  if ("opacity" in node) props.opacity = (node as BlendMixin).opacity;
 
   if ("paddingTop" in node) {
     props.paddingTop = node.paddingTop;
@@ -44,6 +50,12 @@ function extractVisualProps(node: SceneNode): VisualProps {
   if ("layoutMode" in node) {
     props.layoutMode = node.layoutMode;
     props.itemSpacing = node.itemSpacing;
+  }
+
+  if (node.type === "TEXT") {
+    const textNode = node as TextNode;
+    props.characters = textNode.characters;
+    props.fontSize = textNode.fontSize;
   }
 
   if ("children" in node) {

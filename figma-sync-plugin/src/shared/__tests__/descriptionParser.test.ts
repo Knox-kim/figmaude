@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { parseDescription } from "../descriptionParser";
+import { parseDescription, serializeDescription, updateSyncNotes } from "../descriptionParser";
 
 describe("parseDescription", () => {
   it("returns empty annotations for plain text", () => {
     const result = parseDescription("A simple button component");
     expect(result.plainDescription).toBe("A simple button component");
     expect(result.annotations).toEqual({});
+    expect(result.syncNotes).toEqual([]);
   });
 
   it("parses single @tag", () => {
@@ -43,10 +44,12 @@ describe("parseDescription", () => {
     expect(parseDescription("")).toEqual({
       plainDescription: "",
       annotations: {},
+      syncNotes: [],
     });
     expect(parseDescription(undefined as unknown as string)).toEqual({
       plainDescription: "",
       annotations: {},
+      syncNotes: [],
     });
   });
 
@@ -61,5 +64,73 @@ describe("parseDescription", () => {
     );
     expect(result.plainDescription).toBe("Button component\nSome more text");
     expect(result.annotations["onClick"]).toBe("submit");
+  });
+
+  it("parses @sync: lines into syncNotes", () => {
+    const result = parseDescription(
+      "Button component\n@onClick: handleClick\n@sync: VECTOR child \"icon\" will become placeholder RECTANGLE\n@sync: gradient fill on \"bg\" skipped (SOLID only)"
+    );
+    expect(result.plainDescription).toBe("Button component");
+    expect(result.annotations["onClick"]).toBe("handleClick");
+    expect(result.syncNotes).toEqual([
+      'VECTOR child "icon" will become placeholder RECTANGLE',
+      'gradient fill on "bg" skipped (SOLID only)',
+    ]);
+  });
+
+  it("excludes @sync from annotations", () => {
+    const result = parseDescription("@sync: some note\n@onClick: handler");
+    expect(result.annotations["sync"]).toBeUndefined();
+    expect(result.annotations["onClick"]).toBe("handler");
+    expect(result.syncNotes).toEqual(["some note"]);
+  });
+});
+
+describe("serializeDescription", () => {
+  it("serializes plain description only", () => {
+    const result = serializeDescription({
+      plainDescription: "A button",
+      annotations: {},
+      syncNotes: [],
+    });
+    expect(result).toBe("A button");
+  });
+
+  it("serializes description with annotations and syncNotes", () => {
+    const result = serializeDescription({
+      plainDescription: "Button component",
+      annotations: { onClick: "handleClick" },
+      syncNotes: ['gradient fill on "bg" skipped (SOLID only)'],
+    });
+    expect(result).toBe(
+      'Button component\n@onClick: handleClick\n@sync: gradient fill on "bg" skipped (SOLID only)'
+    );
+  });
+
+  it("roundtrips through parse/serialize", () => {
+    const input = 'Button\n@onClick: handler\n@sync: VECTOR "icon" placeholder';
+    const parsed = parseDescription(input);
+    const serialized = serializeDescription(parsed);
+    expect(serialized).toBe(input);
+  });
+});
+
+describe("updateSyncNotes", () => {
+  it("replaces old @sync lines with new ones", () => {
+    const original = 'Button\n@onClick: handler\n@sync: old note';
+    const result = updateSyncNotes(original, ["new note 1", "new note 2"]);
+    expect(result).toBe("Button\n@onClick: handler\n@sync: new note 1\n@sync: new note 2");
+  });
+
+  it("preserves description and annotations when adding sync notes", () => {
+    const original = "Button\n@onClick: handler";
+    const result = updateSyncNotes(original, ["some limitation"]);
+    expect(result).toBe("Button\n@onClick: handler\n@sync: some limitation");
+  });
+
+  it("removes sync notes when given empty array", () => {
+    const original = 'Button\n@sync: old note\n@onClick: handler';
+    const result = updateSyncNotes(original, []);
+    expect(result).toBe("Button\n@onClick: handler");
   });
 });

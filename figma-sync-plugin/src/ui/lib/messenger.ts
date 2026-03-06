@@ -51,13 +51,13 @@ export function requestToPlugin<T extends PluginRequestType>(
     pendingRequests.set(requestId, { resolve, reject });
     parent.postMessage({ pluginMessage: envelope }, "*");
 
-    // Timeout after 30s
+    // Timeout after 120s (large component sets with many variants need time)
     setTimeout(() => {
       if (pendingRequests.has(requestId)) {
         pendingRequests.delete(requestId);
         reject(new Error(`Request ${type} timed out`));
       }
-    }, 30000);
+    }, 120000);
   });
 }
 

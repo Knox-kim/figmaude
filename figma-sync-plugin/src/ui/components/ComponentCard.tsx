@@ -1,13 +1,9 @@
-import type { SyncState, FlatSnapshot } from "../../shared/types";
-import StatusBadge from "./StatusBadge";
-import { summarizeChanges } from "./DiffViewer";
+import type { SyncState } from "../../shared/types";
 
 interface ComponentCardProps {
   kind: "component" | "style" | "variable";
   componentName: string;
   state: SyncState;
-  lastSyncedSnapshot?: FlatSnapshot;
-  currentSnapshot?: FlatSnapshot;
   onForceSyncFigma: () => void;
   onForceSyncCode: () => void;
   onShowDetails?: () => void;
@@ -19,23 +15,14 @@ export default function ComponentCard({
   kind,
   componentName,
   state,
-  lastSyncedSnapshot,
-  currentSnapshot,
   onForceSyncFigma,
   onForceSyncCode,
   onShowDetails,
   syncing,
   progressMessage,
 }: ComponentCardProps) {
-  const pushEnabled = state === "figma_changed" || state === "conflict" || state === "newly_linked";
-  const pullEnabled = state === "code_changed" || state === "conflict" || state === "newly_linked";
-
-  const changeSummary =
-    (state === "figma_changed" || state === "conflict") &&
-    lastSyncedSnapshot &&
-    currentSnapshot
-      ? summarizeChanges(lastSyncedSnapshot, currentSnapshot)
-      : null;
+  const pushEnabled = state === "figma_changed" || state === "conflict" || state === "newly_linked" || state === "figma_only";
+  const pullEnabled = state === "code_changed" || state === "conflict" || state === "newly_linked" || state === "code_only";
 
   return (
     <tr>
@@ -67,19 +54,10 @@ export default function ComponentCard({
       </td>
       <td className="border border-gray-200 px-3 py-3 text-center align-middle">
         <div className="font-semibold text-sm mb-1">
-          {kind !== "component" && (
-            <span className="text-[10px] font-normal text-gray-400 uppercase tracking-wide mr-1">
-              {kind === "variable" ? "VAR" : "STY"}
-            </span>
-          )}
           {componentName}
         </div>
-        <StatusBadge state={state} />
         {progressMessage && (
           <div className="text-xs text-blue-500 mt-1 animate-pulse">{progressMessage}</div>
-        )}
-        {changeSummary && !progressMessage && (
-          <div className="text-xs text-amber-600 mt-1">{changeSummary}</div>
         )}
       </td>
       <td className="border border-gray-200 px-3 py-3">

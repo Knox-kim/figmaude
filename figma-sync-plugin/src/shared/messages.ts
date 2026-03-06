@@ -1,4 +1,4 @@
-import type { MappingEntry, SyncStatus, GlobalConfig, FlatSnapshot, TokenSnapshot, ComponentDescriptor } from "./types";
+import type { MappingEntry, GlobalConfig, FlatSnapshot, TokenSnapshot, ComponentDescriptor } from "./types";
 
 // --- UI → Sandbox requests ---
 
@@ -79,17 +79,14 @@ export interface ResponseMap {
   GET_FILE_KEY: { fileKey: string };
   APPLY_VARIABLE_VALUES: { success: boolean; updated: number };
   APPLY_STYLE_VALUES: { success: boolean; updated: number };
-  APPLY_COMPONENT_JSON: { success: boolean; nodeId: string };
+  APPLY_COMPONENT_JSON: { success: boolean; nodeId: string; affectedParents: string[] };
   EXTRACT_COMPONENT_JSON: { json: ComponentDescriptor };
 }
 
 // --- Sandbox → UI events ---
 
 export type PluginEvent =
-  | { type: "MAPPINGS_LOADED"; mappings: MappingEntry[] }
-  | { type: "STATUS_UPDATED"; statuses: SyncStatus[] }
-  | { type: "SELECTION_CHANGED"; nodeId: string | null; nodeName: string | null }
-  | { type: "ERROR"; message: string };
+  | { type: "SELECTION_CHANGED"; nodeId: string | null; nodeName: string | null };
 
 // --- Wire format (internal) ---
 
